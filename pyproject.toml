@@ -1,0 +1,9 @@
+[project]
+name = "media-intelligence-engine"
+version = "0.1.0"
+description = "A traceable media graph from real web content"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
