@@ -3,7 +3,7 @@
 A one-day backend assessment: crawl real web content, extract entities and typed
 relationships, keep a traceable graph in SQLite, and expose three analysis APIs.
 
-Author: Aryan717317 (22BAI71264).
+Author: Aryan Bharat Kumar.
 
 Implementation is being built and verified in small phases. The PDF assessment
 defines the deliverables; [the implementation checklist](docs/assessment.md)
