@@ -1,0 +1,33 @@
+# Historical AI coverage gives the three sources shared entities to connect.
+# Replace these URLs freely; source-specific extraction selectors live here too.
+seeds:
+  - url: https://www.theguardian.com/technology/2023/nov/20/sam-altman-openai-exit-ai-microsoft
+    source_type: news
+  - url: https://news.ycombinator.com/item?id=38309611
+    source_type: discussion
+  - url: https://blogs.microsoft.com/blog/2023/01/23/microsoftandopenaiextendpartnership/
+    source_type: blog
+max_depth: 1
+max_pages: 6
+max_links_per_page: 1
+delay_seconds: 1
+page_timeout_ms: 45000
+allowed_domains:
+  - theguardian.com
+  - news.ycombinator.com
+  - blogs.microsoft.com
+source_rules:
+  theguardian.com:
+    source_type: news
+    body_selector: '#maincontent'
+    follow_pattern: '/technology/2023/nov/'
+  news.ycombinator.com:
+    source_type: discussion
+    comment_selector: .commtext
+    title_selector: .titleline
+    body_selector: .toptext
+    follow_pattern: '/item\?id='
+  blogs.microsoft.com:
+    source_type: blog
+    body_selector: .entry-content
+    follow_pattern: '/blog/2023/'
