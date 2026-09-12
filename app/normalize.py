@@ -112,7 +112,14 @@ def normalize(page: RawPage, rule: SourceRule | None = None) -> ContentItem:
                 root = soup.select_one(rule.body_selector)
                 if root:
                     parts.append(root.get_text(" ", strip=True))
-            parts.extend(comment.get_text(" ", strip=True) for comment in comments)
+            comment_ids = {id(comment) for comment in comments}
+            for comment in comments:
+                own_text = []
+                for text in comment.find_all(string=True):
+                    owner = next((parent for parent in text.parents if id(parent) in comment_ids), None)
+                    if owner is comment:
+                        own_text.append(str(text))
+                parts.append(" ".join(own_text))
         else:
             logger.warning("No comment blocks matched at %s; using generic content fallback", page.source_url)
     if not parts:
