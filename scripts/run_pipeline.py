@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import load_config
@@ -67,7 +69,7 @@ def main(argv=None):
         if missing:
             logging.error("No content processed for configured source types: %s", missing)
         return 0 if success else 1
-    except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+    except (OSError, ValueError, RuntimeError, sqlite3.Error, yaml.YAMLError) as exc:
         logging.error("Pipeline failed: %s", exc)
         return 2
 

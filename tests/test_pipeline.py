@@ -9,7 +9,7 @@ from app.config import CrawlConfig
 from app.crawler import CrawlReport, RawPage
 from app.pipeline import process_pages
 from app.storage import connect
-from scripts import run_pipeline
+from scripts import crawl_sources, run_pipeline
 
 
 @pytest.fixture
@@ -69,3 +69,48 @@ def test_cli_fails_when_a_configured_source_type_is_missing(tmp_path, monkeypatc
     assert run_pipeline.main(["--config", str(config_path), "--from-crawl", str(crawl_path),
         "--db", str(tmp_path / "graph.db"), "--report", str(report_path)]) == 1
     assert json.loads(report_path.read_text())["missing_source_types"] == ["blog"]
+
+
+@pytest.mark.parametrize("option", ["--config", "--topics", "--aliases"])
+def test_malformed_yaml_reports_a_configuration_error(tmp_path, option, caplog):
+    path = tmp_path / "broken.yaml"
+    path.write_text("broken: [unclosed", encoding="utf-8")
+    assert run_pipeline.main([option, str(path)]) == 2
+    assert "Pipeline failed" in caplog.text
+
+
+def test_crawl_command_reports_invalid_yaml(tmp_path, caplog):
+    path = tmp_path / "broken.yaml"
+    path.write_text("broken: [unclosed", encoding="utf-8")
+    assert crawl_sources.main(["--config", str(path)]) == 2
+    assert "Crawl failed" in caplog.text
+
+
+def test_storage_failure_cannot_be_reported_as_success(tmp_path, monkeypatch, small_nlp):
+    import sqlite3
+    import app.pipeline as pipeline
+
+    def fail(*args):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(pipeline, "upsert_item", fail)
+    config = CrawlConfig(seeds=["https://example.org"], allowed_domains=["example.org"])
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        process_pages([raw("news")], config, str(tmp_path / "graph.db"), small_nlp, {}, [])
+
+
+def test_extraction_failure_does_not_discard_other_pages(tmp_path, monkeypatch, small_nlp):
+    import app.pipeline as pipeline
+
+    original = pipeline.analyze
+
+    def sometimes_fail(body, nlp, topics):
+        if body == "Invalid extraction.":
+            raise ValueError("cannot analyze this page")
+        return original(body, nlp, topics)
+
+    monkeypatch.setattr(pipeline, "analyze", sometimes_fail)
+    config = CrawlConfig(seeds=["https://example.org"], allowed_domains=["example.org"])
+    result = process_pages([raw("news", 0, "<p>Invalid extraction.</p>"), raw("news", 1)],
+                           config, str(tmp_path / "graph.db"), small_nlp, {}, [])
+    assert result.processed == 1 and result.failures[0]["stage"] == "extraction"

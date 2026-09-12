@@ -21,3 +21,17 @@ Reproduce the regression checks with:
 ```shell
 python -m pytest tests/test_crawler.py -q
 ```
+
+## Malformed YAML escaped command error handling
+
+A missing closing bracket in any of the three configuration files raised
+`yaml.ParserError`, which was outside the command's existing exception list.
+All three regression cases failed before the fix. Both commands now handle
+`yaml.YAMLError` and return exit code 2 with the parser's error location.
+Page failures still return 1 under strict mode; SQLite failures still invalidate
+the run. Tests also verify that an extraction failure on one page does not
+discard subsequent valid pages.
+
+```shell
+python -m pytest tests/test_pipeline.py -q
+```
