@@ -39,6 +39,8 @@ class SourceRule(BaseModel):
     body_selector: str | None = None
     comment_selector: str | None = None
     title_selector: str | None = None
+    author_selector: str | None = None
+    published_selector: str | None = None
     follow_pattern: str | None = None
 
     @field_validator("follow_pattern")

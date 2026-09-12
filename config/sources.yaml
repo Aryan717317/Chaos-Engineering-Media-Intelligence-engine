@@ -25,6 +25,8 @@ source_rules:
     source_type: discussion
     comment_selector: .commtext
     title_selector: .titleline
+    author_selector: .fatitem .hnuser
+    published_selector: .fatitem .age
     body_selector: .toptext
     follow_pattern: '/item\?id='
   blogs.microsoft.com:
