@@ -33,19 +33,34 @@ def load_nlp(model: str = "en_core_web_sm"):
         raise RuntimeError(f"Missing spaCy model {model}. Run: python -m spacy download {model}") from exc
 
 
+def text_blocks(body: str, max_chars: int = 50000):
+    """Retain offsets while bounding NLP work, without dropping long comments."""
+    offset = 0
+    for block in body.split("\n\n"):
+        start = 0
+        while start < len(block):
+            end = min(start + max_chars, len(block))
+            if end < len(block):
+                boundary = block.rfind(" ", start, end)
+                if boundary > start:
+                    end = boundary + 1
+            text = block[start:end]
+            if text.strip():
+                yield text, offset + start
+            start = end
+        offset += len(block) + 2
+
+
 def analyze(body: str, nlp, topics: dict[str, list[str]]) -> Analysis:
     mentions = []
     sentences = []
-    offset = 0
-    for block in body.split("\n\n"):
-        if block.strip():
-            doc = nlp(block)
-            for span in doc.ents:
-                if span.label_ in NER_TYPES:
-                    mentions.append(Mention(text=span.text, type=NER_TYPES[span.label_],
-                                            start=offset + span.start_char, end=offset + span.end_char))
-            sentences.extend(Sentence(sent.text, offset + sent.start_char, offset + sent.end_char) for sent in doc.sents)
-        offset += len(block) + 2
+    blocks = text_blocks(body, max_chars=min(50000, nlp.max_length - 1))
+    for doc, offset in nlp.pipe(blocks, as_tuples=True, batch_size=8):
+        for span in doc.ents:
+            if span.label_ in NER_TYPES:
+                mentions.append(Mention(text=span.text, type=NER_TYPES[span.label_],
+                                        start=offset + span.start_char, end=offset + span.end_char))
+        sentences.extend(Sentence(sent.text, offset + sent.start_char, offset + sent.end_char) for sent in doc.sents)
     candidates = mentions + topic_mentions(body, topics)
     selected = []
     for mention in sorted(candidates, key=lambda m: (m.start, -(m.end - m.start), m.type != "topic")):
