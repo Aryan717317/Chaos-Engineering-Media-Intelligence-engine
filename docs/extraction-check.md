@@ -51,3 +51,32 @@ The initial check found 30/698/8/29/4/15 canonical entities across the six pages
 before the raw-URL filter. These counts are diagnostic, not ground-truth counts.
 Aliases are explicit and versioned in `config/aliases.yaml`; conflicting aliases
 fail validation rather than letting file order choose an identity.
+
+## Phase 6: relationships
+
+The six pages produced 923 weak co-mention observations and nine affiliation
+observations before source-level deduplication. The sample contains no matched
+reply or quotation verbs; those directions are covered by deterministic tests.
+Fourteen relationship tests pass.
+
+The Microsoft partnership post explicitly identifies Sam Altman's role at
+OpenAI. `person_role_organization` detects the intervening CEO/of phrase and
+emits Sam Altman -> affiliated_with -> OpenAI. This is a correct reading of
+that historical source, not a statement about current employment. The same
+post identifies Satya Nadella's role at Microsoft with comma-separated role
+text; a dedicated rule now covers that observed phrasing.
+
+| Relation | Definition and detection | Important failure cases |
+| --- | --- | --- |
+| affiliated_with | Person -> organization; employment verb or explicit role phrase/appositive | Wrong NER spans, former roles mistaken for current ones by consumers, hypothetical scope |
+| responded_to | Responder -> addressed entity; explicit replied/responded-to phrase | Replies expressed through page structure or pronouns are missed |
+| quoted_by | Quoted entity -> quoting entity; active quoted or passive was/is-quoted-by phrase | Actual quote attribution using said is not the same relation and is not inferred |
+| mentioned_with | Symmetric co-mention of neighboring entities within one sentence and at most 12 intervening whitespace-separated tokens | Lists, opinions and unrelated actors create weak edges |
+
+Rules retain the sentence, start offset and rule name. Obvious negation,
+questions and conditional/future wording suppress typed assertions but may
+still produce weak co-mentions. The guard applies to a whole sentence, so
+unrelated uncertainty in a long sentence can suppress a correct relation.
+Relationships never cross normalized comment boundaries. They do not resolve
+pronouns, reconstruct reply trees, infer factual truth or claim calibrated
+confidence. The strong/weak imbalance is an actual limitation of this sample.
