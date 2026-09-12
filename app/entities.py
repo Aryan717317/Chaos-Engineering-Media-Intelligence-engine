@@ -72,6 +72,14 @@ def person_context(body: str, mention: Mention) -> bool:
                              r"|\b(?:Mr|Ms|Mrs|Dr)\.?\s+$", before, re.I))
 
 
+def usable_full_name(name: str) -> bool:
+    words = name.split()
+    # Bad NER spans such as "Will Sam" or "Greg ... @handle Sam" must not become anchors.
+    return (2 <= len(words) <= 4 and words[0].casefold() not in
+            {"will", "may", "can", "would", "could", "should", "does", "did", "is", "the"}
+            and all(re.fullmatch(r"[^\W\d_]+(?:['’-][^\W\d_]+)*", word) for word in words))
+
+
 def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefinition], *, source_type: str = "news"):
     known = []
     lookup = alias_lookup(aliases)
@@ -97,7 +105,8 @@ def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefi
     for mention in candidates:
         name = mention.canonical_name or mention.text
         words = canonical_key(name).split()
-        if mention.type == "person" and len(words) > 1:
+        definition = lookup.get(canonical_key(name))
+        if mention.type == "person" and (usable_full_name(name) or (len(words) > 1 and definition and definition.type == "person")):
             key = canonical_key(name)
             block = bisect_right(blocks, mention.start) - 1
             for short in {words[0], words[-1]}:
@@ -109,6 +118,8 @@ def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefi
         if re.search(r"https?://|www\.", mention.text, re.I):
             continue
         definition = lookup.get(canonical_key(mention.text))
+        if not definition and mention.type == "organization" and canonical_key(mention.text) in {"llc", "inc", "ltd", "corp"}:
+            continue
         name = definition.name if definition else (mention.canonical_name or mention.text)
         kind = definition.type if definition else mention.type
         short = canonical_key(name)
@@ -132,5 +143,9 @@ def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefi
         resolved.append(ResolvedMention(text=mention.text, type=kind, start=mention.start,
             end=mention.end, canonical_name=name, entity_id=entity.id))
     for entity in entities.values():
+        definition = lookup.get(canonical_key(entity.canonical_name))
+        if definition and definition.type == entity.type:
+            # Known lookup aliases do not count as extra mentions or source votes.
+            entity.aliases.extend(definition.aliases)
         entity.aliases = sorted(set(entity.aliases))
     return sorted(entities.values(), key=lambda e: e.id), resolved

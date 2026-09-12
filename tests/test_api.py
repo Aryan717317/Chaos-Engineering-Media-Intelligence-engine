@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from app.api import create_app
-from app.entities import entity_for
-from app.models import ContentItem, Relationship
+from app.entities import AliasDefinition, entity_for, resolve_entities
+from app.models import ContentItem, Mention, Relationship
 from app.storage import initialize, upsert_item
 
 
@@ -63,3 +63,20 @@ def test_ambiguous_names_offer_ids_and_weak_edges_can_be_filtered(tmp_path):
         assert len(strong["nodes"]) == 1 and strong["edges"] == []
         assert client.get("/connections/new?since=2026-01-01T00:00:00Z&include_weak=false").json()["edges"] == []
         assert all(node["degree"] == 0 for node in client.get("/entities/central?include_weak=false").json()["entities"])
+
+
+def test_elon_full_name_surname_and_configured_handle_find_the_same_node(tmp_path):
+    path = tmp_path / "musk.db"
+    initialize(path)
+    body = "Elon Musk spoke. Musk replied."
+    surname = body.index("Musk replied")
+    entities, _ = resolve_entities(body, [Mention(text="Musk", type="person", start=surname, end=surname + 4)],
+        [AliasDefinition(name="Elon Musk", type="person", aliases=["@elonmusk", "elonmusk"])])
+    item = ContentItem(source_url="https://example.org/report", source_type="news", title="Report", body=body,
+                       scraped_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    upsert_item(path, item, entities, [])
+    with TestClient(create_app(str(path))) as client:
+        responses = [client.get(f"/entity/{name}/network") for name in ["Elon Musk", "Musk", "@elonmusk"]]
+        assert all(response.status_code == 200 for response in responses)
+        assert len({response.json()["entity"]["id"] for response in responses}) == 1
+        assert all(response.json()["entity"]["mention_count"] == 1 for response in responses)

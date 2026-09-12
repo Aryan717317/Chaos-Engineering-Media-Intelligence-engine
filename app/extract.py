@@ -12,10 +12,20 @@ NER_TYPES = {"PERSON": "person", "ORG": "organization", "GPE": "location", "LOC"
 
 
 @dataclass
+class ParsedToken:
+    start: int
+    end: int
+    head: int
+    dep: str
+    lemma: str
+
+
+@dataclass
 class Sentence:
     text: str
     start: int
     end: int
+    tokens: tuple[ParsedToken, ...] = ()
 
 
 @dataclass
@@ -60,7 +70,10 @@ def analyze(body: str, nlp, topics: dict[str, list[str]]) -> Analysis:
             if span.label_ in NER_TYPES:
                 mentions.append(Mention(text=span.text, type=NER_TYPES[span.label_],
                                         start=offset + span.start_char, end=offset + span.end_char))
-        sentences.extend(Sentence(sent.text, offset + sent.start_char, offset + sent.end_char) for sent in doc.sents)
+        for sent in doc.sents:
+            tokens = tuple(ParsedToken(offset + token.idx, offset + token.idx + len(token),
+                           offset + token.head.idx, token.dep_, token.lemma_.lower()) for token in sent) if doc.has_annotation("DEP") else ()
+            sentences.append(Sentence(sent.text, offset + sent.start_char, offset + sent.end_char, tokens))
     candidates = mentions + topic_mentions(body, topics)
     selected = []
     for mention in sorted(candidates, key=lambda m: (m.start, -(m.end - m.start), m.type != "topic")):

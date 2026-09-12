@@ -124,3 +124,25 @@ def test_explicit_organization_alias_overrides_surname_guess():
 def test_known_aliases_inside_urls_are_not_entities():
     assert resolve_entities("https://example.org/Elon-Musk/OpenAI", [],
                             [AliasDefinition(name="OpenAI", type="organization")]) == ([], [])
+
+
+def test_generic_company_suffix_is_not_a_standalone_organization():
+    body = "LLC employs Alice."
+    entities, _ = resolve_entities(body, [Mention(text="LLC", type="organization", start=0, end=3)], [])
+    assert entities == []
+
+
+def test_configured_y_combinator_variants_converge():
+    body = "Y Combinator met Y-Combinator and YCombinator."
+    entities, mentions = resolve_entities(body, [], load_aliases("config/aliases.yaml"))
+    assert len(entities) == 1 and entities[0].canonical_name == "Y Combinator"
+    assert len(mentions) == 3
+
+
+@pytest.mark.parametrize("bad_anchor", ["Will Sam", "Greg Brockman @gdb Sam"])
+def test_bad_ner_full_name_does_not_absorb_a_short_person_name(bad_anchor):
+    body = bad_anchor + " arrived. Sam spoke."
+    mentions = [Mention(text=bad_anchor, type="person", start=0, end=len(bad_anchor)),
+                Mention(text="Sam", type="person", start=body.index("Sam spoke"), end=body.index("Sam spoke") + 3)]
+    _, resolved = resolve_entities(body, mentions, [], source_type="discussion")
+    assert resolved[-1].canonical_name == "Sam"
