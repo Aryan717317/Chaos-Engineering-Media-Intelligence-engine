@@ -1,0 +1,16 @@
+# Deliberate aliases. Surnames are resolved from document context, not listed here.
+- name: Elon Musk
+  type: person
+  aliases: [elonmusk, '@elonmusk']
+- name: Sam Altman
+  type: person
+  aliases: [sama, '@sama']
+- name: OpenAI
+  type: organization
+  aliases: [Open AI]
+- name: Microsoft
+  type: organization
+  aliases: [Microsoft Corporation, MSFT]
+- name: Y Combinator
+  type: organization
+  aliases: [YC]
