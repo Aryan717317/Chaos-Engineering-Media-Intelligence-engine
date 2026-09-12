@@ -5,7 +5,9 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import yaml
+from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from soupsieve import SelectorSyntaxError
 
 
 def canonical_url(url: str) -> str:
@@ -33,6 +35,20 @@ def domain_allowed(url: str, domains: list[str]) -> bool:
     return any(host == domain or host.endswith("." + domain) for domain in domains)
 
 
+def clean_domain(value: str) -> str:
+    domain = value.lower().strip().rstrip(".")
+    label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    if len(domain) > 253 or not re.fullmatch(rf"{label}(?:\.{label})*", domain):
+        raise ValueError("Domain entries must be bare domain names, without paths or ports")
+    return domain
+
+
+def clean_source_type(value: str) -> str:
+    if not value.strip():
+        raise ValueError("source_type must not be blank")
+    return value.strip()
+
+
 class SourceRule(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_type: str = "web"
@@ -42,6 +58,24 @@ class SourceRule(BaseModel):
     author_selector: str | None = None
     published_selector: str | None = None
     follow_pattern: str | None = None
+
+    @field_validator("source_type")
+    @classmethod
+    def validate_source_type(cls, value: str) -> str:
+        return clean_source_type(value)
+
+    @field_validator("body_selector", "comment_selector", "title_selector", "author_selector", "published_selector")
+    @classmethod
+    def valid_selector(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not value.strip():
+            raise ValueError("Selectors must not be blank; omit unused selectors")
+        try:
+            BeautifulSoup("", "html.parser").css.compile(value)
+        except (SelectorSyntaxError, NotImplementedError) as exc:
+            raise ValueError(f"Invalid CSS selector: {exc}") from exc
+        return value
 
     @field_validator("follow_pattern")
     @classmethod
@@ -58,6 +92,11 @@ class Seed(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str
     source_type: str | None = None
+
+    @field_validator("source_type")
+    @classmethod
+    def validate_source_type(cls, value: str | None) -> str | None:
+        return clean_source_type(value) if value is not None else None
 
     @field_validator("url")
     @classmethod
@@ -79,15 +118,25 @@ class CrawlConfig(BaseModel):
     @field_validator("seeds", mode="before")
     @classmethod
     def accept_plain_urls(cls, value: list) -> list:
+        if not isinstance(value, list):
+            raise ValueError("seeds must be a list of URLs or seed objects")
         return [{"url": seed} if isinstance(seed, str) else seed for seed in value]
 
     @field_validator("allowed_domains")
     @classmethod
     def validate_domains(cls, values: list[str]) -> list[str]:
-        domains = [value.lower().strip().rstrip(".") for value in values]
-        if any(not re.fullmatch(r"[a-z0-9]+(?:[a-z0-9.-]*[a-z0-9])?", d) for d in domains):
-            raise ValueError("Whitelist entries must be bare domain names, without paths or ports")
-        return sorted(set(domains))
+        return sorted({clean_domain(value) for value in values})
+
+    @field_validator("source_rules")
+    @classmethod
+    def validate_rule_domains(cls, values: dict[str, SourceRule]) -> dict[str, SourceRule]:
+        cleaned = {}
+        for domain, rule in values.items():
+            key = clean_domain(domain)
+            if key in cleaned:
+                raise ValueError(f"Duplicate source rule for domain: {key}")
+            cleaned[key] = rule
+        return cleaned
 
     @model_validator(mode="after")
     def check_seeds(self):

@@ -83,3 +83,27 @@ def test_invalid_configuration_fails_early(override):
     values.update(override)
     with pytest.raises(ValidationError):
         CrawlConfig(**values)
+
+
+@pytest.mark.parametrize("seeds", [None, 42, "https://example.org"])
+def test_malformed_seed_list_is_a_validation_error(seeds):
+    with pytest.raises(ValidationError):
+        CrawlConfig(seeds=seeds, allowed_domains=["example.org"])
+
+
+def test_rule_domains_use_the_same_case_and_dot_cleanup_as_whitelist():
+    config = CrawlConfig(seeds=["https://example.org"], allowed_domains=["EXAMPLE.ORG."],
+                         source_rules={" EXAMPLE.ORG. ": {"source_type": "news"}})
+    assert config.rule_for("https://example.org/story").source_type == "news"
+
+
+@pytest.mark.parametrize("rules", [
+    {"https://example.org": {}},
+    {"example.org": {}, "EXAMPLE.ORG": {"source_type": "news"}},
+    {"example.org": {"body_selector": "["}},
+    {"example.org": {"comment_selector": ""}},
+    {"example.org": {"source_type": " "}},
+])
+def test_malformed_source_rules_fail_before_crawling(rules):
+    with pytest.raises(ValidationError):
+        CrawlConfig(seeds=["https://example.org"], allowed_domains=["example.org"], source_rules=rules)
