@@ -15,6 +15,112 @@ See the [quality comparison](docs/quality-review.md), [initial validation](docs/
 for changed-seed and setup results, and the
 [assessment audit](docs/assessment.md) for requirement coverage.
 
+## Working project screenshots
+
+These captures show actual requests to the running Swagger API, using the
+reprocessed six-page graph described above. Captured on 13 September 2026 in
+India (12 September UTC). Some response boxes are scrolled to show the relevant
+fields. Click an image to view it at full resolution, or expand a demonstration
+below. The final image is a labeled verification report.
+
+![Swagger overview showing the three analyst API endpoints](docs/screenshots/01-api-overview.png)
+
+<details>
+<summary>Run a network query and inspect relationship evidence</summary>
+
+Select **Try it out**, enter `Mira Murati`, set `depth=1` and
+`include_weak=false`, then click **Execute**. This asks for direct connections
+and excludes weak co-mentions.
+
+![Network controls with Mira Murati, depth 1 and weak connections excluded](docs/screenshots/02-network-controls.png)
+
+The actual **Server response** returns HTTP 200. Mira Murati's
+`affiliated_with` edge to OpenAI has weight 2, representing two supporting
+source URLs. The scrolled response shows a Guardian URL, the source sentence,
+publication and observation times, and the `dependency_role` extraction rule.
+The relationship records a historical source claim, not current employment.
+
+![Successful network response showing the typed relationship and original source evidence](docs/screenshots/03-relationship-evidence.png)
+
+</details>
+
+<details>
+<summary>Find central entities</summary>
+
+With `limit=3` and `include_weak=false`, OpenAI has 14 unique typed neighbors
+and degree centrality approximately 0.01958. Microsoft has 3 neighbors. Sam
+Altman is the third result, below this visible excerpt. This measures connection
+breadth within the collected graph.
+
+![Centrality response showing the metric, 716 total nodes and ranked entities](docs/screenshots/04-central-entities.png)
+
+</details>
+
+<details>
+<summary>Query newly observed connections</summary>
+
+The request uses `since=2026-01-01T00:00:00Z` and excludes weak edges. The
+response exposes the thresholds for growing existing edges: 3 additional
+source URLs and 50% relative growth.
+
+![New-connections response showing the timestamp boundary and growth thresholds](docs/screenshots/05a-new-connections-thresholds.png)
+
+Scrolling within the same response shows an edge with `reason=new`,
+`weight_before=0` and `increase=1`, alongside its discussion-source evidence.
+The complete response contains 22 typed edges. Here, **new means newly observed
+by the pipeline**, not that the historical event happened in 2026. A statement
+in a discussion is not an independent fact check.
+
+![New connection with supporting evidence and the reason and increase fields](docs/screenshots/05b-new-connections-result.png)
+
+</details>
+
+<details>
+<summary>Verify Elon Musk and @elonmusk resolve to the same person</summary>
+
+Both requests return the same canonical name and node ID,
+`4722d966e1a7f0e0af87fc39`. `%40elonmusk` in the second request URL is the
+URL-encoded form of `@elonmusk`. The full responses were also checked for
+equality. This demonstrates configured alias lookup without adding another
+node or inflating mention counts.
+
+![Elon Musk lookup returning the canonical person node](docs/screenshots/06-elon-musk.png)
+
+![Handle lookup returning the identical Elon Musk person node](docs/screenshots/07-elonmusk-handle.png)
+
+These requests use `include_weak=false`. This sample contains no retained typed
+direct edges for Elon Musk, so `edges` is empty; his weak co-mentions are filtered
+out.
+
+</details>
+
+<details>
+<summary>Handle an ambiguous surname without forcing a merge</summary>
+
+`Musk` returns the intended HTTP 409 conflict with two candidate IDs: Elon Musk
+and an unresolved surname mention. Use the canonical name or a candidate ID to
+disambiguate. Swagger labels this response **Undocumented** because its 409
+schema is not declared in the OpenAPI documentation. Contextual surname merging
+is tested separately; the resolver does not globally merge every bare `Musk`.
+
+![Expected ambiguity response for Musk showing two candidate person nodes](docs/screenshots/08-ambiguous-surname.png)
+
+</details>
+
+<details>
+<summary>Inspect real-source coverage and test results</summary>
+
+This generated report presents the actual SQLite counts and saved test output:
+6 real pages, 716 entities, 557 edges, 586 source-evidence records, and **125
+tests passed with 1 warning**. The graph includes 22 typed affiliations and 535
+weak co-mentions. The report lists the source pages and is labeled separately
+from the application interface. These counts demonstrate coverage, not measured
+extraction precision.
+
+![Verification report with graph counts, actual passing test output and six real source URLs](docs/screenshots/09-data-and-tests.png)
+
+</details>
+
 ## Setup
 
 Python 3.11+ is required. Development and verification used Python 3.12.14 on
