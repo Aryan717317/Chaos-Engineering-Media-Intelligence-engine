@@ -28,6 +28,20 @@ def test_network_http_contract_and_encoded_names(tmp_path):
         assert client.get("/entity/Alice%20Smith/network?depth=3").status_code == 422
         assert client.get("/entity/Alice%20Smith/network?depth=nope").status_code == 422
         assert "/entity/{name}/network" in client.get("/openapi.json").json()["paths"]
+        new = client.get("/connections/new", params={"since": "2026-01-01T05:30:00+05:30"})
+        assert new.status_code == 200
+        assert new.json()["edges"][0]["reason"] == "new"
+        assert new.json()["edges"][0]["increase"] == 1
+        assert client.get("/connections/new?since=2027-01-01T00:00:00Z").json()["edges"] == []
+        assert client.get("/connections/new").status_code == 422
+        for invalid in ("bad", "2026-01-01", "2026-01-01T00:00:00"):
+            assert client.get("/connections/new", params={"since": invalid}).status_code == 422
+        central = client.get("/entities/central?limit=1")
+        assert central.status_code == 200
+        assert len(central.json()["entities"]) == 1
+        assert central.json()["entities"][0]["degree_centrality"] == 1
+        for invalid in ("0", "101", "bad"):
+            assert client.get("/entities/central", params={"limit": invalid}).status_code == 422
 
 
 def test_ambiguous_names_offer_ids_and_weak_edges_can_be_filtered(tmp_path):
@@ -47,3 +61,5 @@ def test_ambiguous_names_offer_ids_and_weak_edges_can_be_filtered(tmp_path):
         assert len(client.get(f"/entity/{person.id}/network").json()["nodes"]) == 2
         strong = client.get(f"/entity/{person.id}/network?include_weak=false").json()
         assert len(strong["nodes"]) == 1 and strong["edges"] == []
+        assert client.get("/connections/new?since=2026-01-01T00:00:00Z&include_weak=false").json()["edges"] == []
+        assert all(node["degree"] == 0 for node in client.get("/entities/central?include_weak=false").json()["entities"])

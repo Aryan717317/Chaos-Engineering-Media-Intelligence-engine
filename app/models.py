@@ -105,3 +105,31 @@ class NetworkResponse(BaseModel):
     depth: int
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+class EmergingEdge(GraphEdge):
+    reason: Literal["new", "growing"]
+    weight_before: int
+    increase: int
+    relative_increase: float | None
+
+
+class ConnectionsResponse(BaseModel):
+    since: datetime
+    minimum_additional_sources: int = 3
+    minimum_relative_growth: float = 0.5
+    nodes: list[GraphNode]
+    edges: list[EmergingEdge]
+
+
+class CentralEntity(GraphNode):
+    degree: int
+    degree_centrality: float
+    relation_types: list[RelationType]
+
+
+class CentralityResponse(BaseModel):
+    metric: str = "unique undirected neighbors / (total nodes - 1)"
+    total_nodes: int
+    include_weak: bool
+    entities: list[CentralEntity]

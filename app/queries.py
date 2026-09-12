@@ -1,8 +1,9 @@
 """Graph queries over SQLite; no separate in-memory graph service."""
 
 from app.entities import canonical_key
-from app.models import Evidence, GraphEdge, GraphNode, NetworkResponse
-from app.storage import connect
+from app.models import (CentralEntity, CentralityResponse, ConnectionsResponse, EmergingEdge,
+                        Evidence, GraphEdge, GraphNode, NetworkResponse)
+from app.storage import connect, timestamp
 
 
 class AmbiguousEntity(ValueError):
@@ -80,3 +81,60 @@ def network(path, name: str, depth: int = 2, include_weak: bool = True) -> Netwo
                 break
         return NetworkResponse(entity=entity, depth=depth, nodes=read_nodes(connection, found),
                                edges=read_edges(connection, edges.values()))
+
+
+def growth_reason(before: int, increase: int) -> str | None:
+    if before == 0 and increase > 0:
+        return "new"
+    if before > 0 and increase >= 3 and increase >= before * 0.5:
+        return "growing"
+    return None
+
+
+def emerging_connections(path, since, include_weak: bool = True) -> ConnectionsResponse:
+    boundary = timestamp(since)
+    strength_filter = "" if include_weak else "WHERE e.relation!='mentioned_with'"
+    with connect(path) as connection:
+        connection.execute("BEGIN")
+        rows = connection.execute(f"""SELECT e.*,
+            SUM(CASE WHEN v.observed_at < ? THEN 1 ELSE 0 END) AS weight_before,
+            SUM(CASE WHEN v.observed_at >= ? THEN 1 ELSE 0 END) AS increase
+            FROM edges e JOIN edge_evidence v ON e.id=v.edge_id {strength_filter} GROUP BY e.id""",
+            (boundary, boundary)).fetchall()
+        selected = {row["id"]: row for row in rows if growth_reason(row["weight_before"], row["increase"])}
+        edges = []
+        for edge in read_edges(connection, selected.values()):
+            row = selected[edge.id]
+            before, increase = row["weight_before"], row["increase"]
+            edges.append(EmergingEdge(**edge.model_dump(), reason=growth_reason(before, increase),
+                weight_before=before, increase=increase, relative_increase=increase / before if before else None))
+        ids = {node_id for edge in edges for node_id in (edge.source, edge.target)}
+        return ConnectionsResponse(since=boundary, nodes=read_nodes(connection, ids), edges=edges)
+
+
+def central_entities(path, limit: int = 20, include_weak: bool = True) -> CentralityResponse:
+    if not 1 <= limit <= 100:
+        raise ValueError("Limit must be between 1 and 100")
+    strength_filter = "" if include_weak else "WHERE relation!='mentioned_with'"
+    with connect(path) as connection:
+        connection.execute("BEGIN")
+        total = connection.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+        rows = connection.execute(f"""WITH neighbors AS (
+            SELECT source AS node_id, target AS neighbor FROM edges {strength_filter}
+            UNION SELECT target AS node_id, source AS neighbor FROM edges {strength_filter}
+        ) SELECT n.*, COUNT(v.neighbor) AS degree FROM nodes n
+          LEFT JOIN neighbors v ON n.id=v.node_id GROUP BY n.id
+          ORDER BY degree DESC, n.mention_count DESC, LOWER(n.name), n.id LIMIT ?""", (limit,)).fetchall()
+        types = {row["id"]: set() for row in rows}
+        for batch in batches(types):
+            placeholders = ",".join("?" for _ in batch)
+            for edge in connection.execute(f"""SELECT source,target,relation FROM edges
+                WHERE (source IN ({placeholders}) OR target IN ({placeholders}))
+                {"" if include_weak else "AND relation!='mentioned_with'"}""", [*batch, *batch]):
+                for node_id in (edge["source"], edge["target"]):
+                    if node_id in types:
+                        types[node_id].add(edge["relation"])
+        entities = [CentralEntity(**node_from_row(row).model_dump(), degree=row["degree"],
+                    degree_centrality=row["degree"] / (total - 1) if total > 1 else 0,
+                    relation_types=sorted(types[row["id"]])) for row in rows]
+        return CentralityResponse(total_nodes=total, include_weak=include_weak, entities=entities)
