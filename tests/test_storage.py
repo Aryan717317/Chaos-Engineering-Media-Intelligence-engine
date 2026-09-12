@@ -58,3 +58,52 @@ def test_edges_count_sources_and_preserve_citations(tmp_path):
         assert edge["first_seen"].startswith("2026-01-01") and edge["last_seen"].startswith("2026-01-03")
         rows = connection.execute("SELECT sentence,source_url FROM edge_evidence e JOIN sources s ON s.id=e.source_id").fetchall()
         assert len(rows) == 2 and all(r["sentence"] == "Alice works for Acme." for r in rows)
+
+
+def test_earliest_evidence_survives_revisions_and_out_of_order_import(tmp_path):
+    path = tmp_path / "graph.db"
+    initialize(path)
+    entities, relations = graph_input()
+    upsert_item(path, content(day=3).model_copy(update={"title": "Later headline"}), entities, relations)
+    upsert_item(path, content(day=1).model_copy(update={"title": "Original headline"}), entities, relations)
+    upsert_item(path, content(day=4, body="The claim was removed."), entities, [])
+    with connect(path) as connection:
+        evidence = connection.execute("SELECT * FROM edge_evidence").fetchone()
+        assert evidence["source_title"] == "Original headline"
+        assert evidence["observed_at"].startswith("2026-01-01")
+        assert evidence["last_observed_at"].startswith("2026-01-03")
+        assert connection.execute("SELECT weight FROM edges").fetchone()[0] == 1
+        assert connection.execute("SELECT body FROM sources").fetchone()[0] == "The claim was removed."
+
+
+def test_mid_transaction_failure_rolls_back_content_and_nodes(tmp_path):
+    path = tmp_path / "graph.db"
+    initialize(path)
+    entity = entity_for("Alice", "person")
+    conflicting = entity.model_copy(update={"id": "wrong-id-for-same-canonical-key"})
+    with pytest.raises(sqlite3.IntegrityError):
+        upsert_item(path, content(), [entity, conflicting], [])
+    with connect(path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM sources").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM nodes").fetchone()[0] == 0
+
+
+def test_invalid_citation_is_rejected_before_storage(tmp_path):
+    path = tmp_path / "graph.db"
+    initialize(path)
+    entities, relations = graph_input()
+    with pytest.raises(ValueError, match="sentence"):
+        upsert_item(path, content(body="Different text."), entities, relations)
+
+
+def test_symmetric_edges_collapse_and_self_edges_are_omitted(tmp_path):
+    path = tmp_path / "graph.db"
+    initialize(path)
+    entities, relations = graph_input()
+    relation = relations[0].model_copy(update={"relation": "mentioned_with"})
+    reverse = relation.model_copy(update={"source": relation.target, "target": relation.source})
+    self_edge = relation.model_copy(update={"target": relation.source})
+    upsert_item(path, content(), entities, [relation, reverse, self_edge])
+    with connect(path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM edges").fetchone()[0] == 1
+        assert connection.execute("SELECT weight FROM edges").fetchone()[0] == 1
