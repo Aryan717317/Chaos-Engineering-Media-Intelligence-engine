@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+from bisect import bisect_right
 from pathlib import Path
 
 import yaml
@@ -57,25 +58,51 @@ class ResolvedMention(Mention):
     entity_id: str
 
 
-def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefinition]):
+def person_context(body: str, mention: Mention) -> bool:
+    """Require human context before overriding a location/organization NER label."""
+    before = body[max(0, mention.start - 90):mention.start]
+    after = body[mention.end:mention.end + 90].replace("’", "'")
+    if re.search(r"\b(?:in|across|through|visiting|visited|country of|capital of)\s+$", before, re.I):
+        return False
+    if re.match(r"\s+(?:borders|province|city|county|Inc|Ltd|Corporation|Company)\b", after, re.I):
+        return False
+    return bool(re.match(r"(?:'s\s+(?:departure|dismissal|return|wife|husband|brother|sister|colleague|comments?)\b"
+                         r"|\s+(?:(?:has|had)\s+)?(?:said|wrote|tweeted|quit|resigned|posted|told|spoke|joined)\b)", after, re.I)
+                or re.search(r"\b(?:hired|fired|dismissed|ousted|appointed)\s+(?:[\w'-]+\s+and\s+)?$"
+                             r"|\b(?:Mr|Ms|Mrs|Dr)\.?\s+$", before, re.I))
+
+
+def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefinition], *, source_type: str = "news"):
     known = []
     lookup = alias_lookup(aliases)
     for definition in aliases:
         for surface in [definition.name, *definition.aliases]:
-            for match in re.finditer(r"(?<![\w@])" + re.escape(surface) + r"(?!\w)", body, re.I):
+            pattern = re.escape(surface).replace(r"\ ", r"\s+")
+            for match in re.finditer(r"(?<![\w@])" + pattern + r"(?!\w)", body, re.I):
                 known.append(Mention(text=match.group(), type=definition.type, canonical_name=definition.name,
                                      start=match.start(), end=match.end()))
+    # A known short organization name must not erase a longer recognized person name.
+    known = [k for k in known if not any(m.type == "person" and len(m.text.split()) > 1
+             and m.start <= k.start and k.end <= m.end and m.end - m.start > k.end - k.start
+             and k.type != "person" for m in mentions)]
     preferred = []
     for mention in sorted(known, key=lambda m: (m.start, -(m.end - m.start))):
         if not preferred or mention.start >= preferred[-1].end:
             preferred.append(mention)
     candidates = preferred + [m for m in mentions if not any(k.start < m.end and m.start < k.end for k in preferred)]
-    surnames = {}
+    url_spans = [match.span() for match in re.finditer(r"(?:https?://|www\.)\S+", body, re.I)]
+    candidates = [m for m in candidates if not any(start < m.end and m.start < end for start, end in url_spans)]
+    blocks = [0] + [match.end() for match in re.finditer(r"\n\s*\n", body)]
+    local_names, document_surnames = {}, {}
     for mention in candidates:
         name = mention.canonical_name or mention.text
         words = canonical_key(name).split()
         if mention.type == "person" and len(words) > 1:
-            surnames.setdefault(words[-1], {})[canonical_key(name)] = name
+            key = canonical_key(name)
+            block = bisect_right(blocks, mention.start) - 1
+            for short in {words[0], words[-1]}:
+                local_names.setdefault((block, short), {})[key] = name
+            document_surnames.setdefault(words[-1], {})[key] = name
     entities = {}
     resolved = []
     for mention in sorted(candidates, key=lambda m: (m.start, m.end)):
@@ -84,9 +111,18 @@ def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefi
         definition = lookup.get(canonical_key(mention.text))
         name = definition.name if definition else (mention.canonical_name or mention.text)
         kind = definition.type if definition else mention.type
-        choices = surnames.get(canonical_key(name), {})
-        if not definition and kind == "person" and len(choices) == 1:
-            name = next(iter(choices.values()))
+        short = canonical_key(name)
+        if not definition and len(short.split()) == 1 and kind != "topic":
+            block = bisect_right(blocks, mention.start) - 1
+            choices = local_names.get((block, short), {})
+            # A comment is its own context. Full names in unrelated replies are not evidence.
+            if not choices and source_type not in {"discussion", "social"}:
+                choices = document_surnames.get(short, {})
+            if len(choices) == 1:
+                full_name = next(iter(choices.values()))
+                is_surname = canonical_key(full_name).split()[-1] == short
+                if kind == "person" or (is_surname and person_context(body, mention)):
+                    name, kind = full_name, "person"
         if not canonical_key(name):
             continue
         entity = entity_for(name, kind)

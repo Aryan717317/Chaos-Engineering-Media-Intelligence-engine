@@ -39,7 +39,7 @@ def process_pages(pages: list[RawPage], config: CrawlConfig, database: str, nlp,
             continue
         try:
             analysis = analyze(item.body, nlp, topics)
-            entities, mentions = resolve_entities(item.body, analysis.mentions, aliases)
+            entities, mentions = resolve_entities(item.body, analysis.mentions, aliases, source_type=item.source_type)
             relationships = extract_relationships(item.body, analysis.sentences, mentions)
         except ValueError as exc:
             summary.failures.append({"url": page.source_url, "stage": "extraction", "error": str(exc)})

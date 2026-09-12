@@ -70,3 +70,57 @@ def test_urls_mistaken_for_entities_are_discarded():
     body = "https://example.org/sam-altman"
     entities, resolved = resolve_entities(body, [Mention(text=body, type="person", start=0, end=len(body))], [])
     assert not entities and not resolved
+
+
+def test_elon_musk_full_name_surname_and_handle_share_one_node():
+    body = "Elon Musk spoke. Musk replied as @elonmusk."
+    aliases = [AliasDefinition(name="Elon Musk", type="person", aliases=["@elonmusk"])]
+    start = body.index("Musk replied")
+    mentions = [Mention(text="Musk", type="person", start=start, end=start + 4)]
+    entities, resolved = resolve_entities(body, mentions, aliases, source_type="discussion")
+    assert len(entities) == 1
+    assert entities[0].canonical_name == "Elon Musk"
+    assert set(entities[0].aliases) == {"Elon Musk", "Musk", "@elonmusk"}
+    assert len({m.entity_id for m in resolved}) == 1
+    assert all(body[m.start:m.end] == m.text for m in resolved)
+
+
+def test_surnames_resolve_within_comments_despite_other_comment_ambiguity():
+    body = "Elon Musk spoke. Musk replied.\n\nKimbal Musk spoke. Musk left.\n\nMusk waited."
+    import re
+    names = [Mention(text=m.group(), type="person", start=m.start(), end=m.end())
+             for m in re.finditer(r"Elon Musk|Kimbal Musk|Musk", body)]
+    _, resolved = resolve_entities(body, names, [], source_type="discussion")
+    assert [m.canonical_name for m in resolved] == ["Elon Musk", "Elon Musk", "Kimbal Musk", "Kimbal Musk", "Musk"]
+
+
+def test_given_names_need_a_unique_full_name_in_the_same_comment():
+    body = "Sam Altman spoke to Sam.\n\nSam waited."
+    import re
+    mentions = [Mention(text=m.group(), type="person", start=m.start(), end=m.end())
+                for m in re.finditer(r"Sam Altman|Sam", body)]
+    _, resolved = resolve_entities(body, mentions, [], source_type="discussion")
+    assert [m.canonical_name for m in resolved] == ["Sam Altman", "Sam Altman", "Sam"]
+
+
+def test_person_context_corrects_surname_types_but_keeps_real_places():
+    body = "Alice Jordan spoke. Jordan resigned. We visited Jordan."
+    import re
+    mentions = [Mention(text=m.group(), type="person" if m.group() == "Alice Jordan" else "location",
+                        start=m.start(), end=m.end()) for m in re.finditer(r"Alice Jordan|Jordan", body)]
+    _, resolved = resolve_entities(body, mentions, [])
+    assert [(m.canonical_name, m.type) for m in resolved] == [
+        ("Alice Jordan", "person"), ("Alice Jordan", "person"), ("Jordan", "location")]
+
+
+def test_explicit_organization_alias_overrides_surname_guess():
+    body = "Alice Jordan spoke. Jordan said sales grew."
+    mentions = mentions_for(body, ["Alice Jordan"])
+    entities, resolved = resolve_entities(body, mentions, [AliasDefinition(name="Jordan", type="organization")])
+    assert resolved[0].canonical_name == "Alice Jordan"
+    assert resolved[-1].type == "organization"
+
+
+def test_known_aliases_inside_urls_are_not_entities():
+    assert resolve_entities("https://example.org/Elon-Musk/OpenAI", [],
+                            [AliasDefinition(name="OpenAI", type="organization")]) == ([], [])
