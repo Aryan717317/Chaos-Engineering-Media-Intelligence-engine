@@ -1,7 +1,7 @@
 # Bugs reproduced during final validation
 
-These are defects found in the implementation, not deliberately introduced
-failures. Regression tests run without live websites.
+These defects were found during implementation review. Regression tests run
+without live websites.
 
 ## Invalid source configuration
 
