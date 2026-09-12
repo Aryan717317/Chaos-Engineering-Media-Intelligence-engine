@@ -1,5 +1,8 @@
 # Extraction checks on real crawled content
 
+These are the initial phase checks. The subsequent [quality review](quality-review.md)
+documents the current parser rules, comment-local normalization and measured changes.
+
 ## Phase 4: raw entity recognition
 
 The installed `en_core_web_sm` 3.8.0 model processed all six normalized pages.

@@ -7,11 +7,12 @@ Author: Aryan Bharat Kumar.
 
 GitHub: [Aryan717317](https://github.com/Aryan717317) · Student ID: 22BAI71264
 
-The verified six-page crawl produced **705 entities, 554 edges and 581 evidence
-links**, with two news articles, two discussion threads and two company blog
-posts. All three API endpoints were checked over HTTP against that database.
-There are **96 passing deterministic tests**. See [validation](docs/validation.md)
-for commands, changed-seed results and limitations, and the
+Reprocessing the verified six-page crawl with the improved extraction produced
+**716 entities, 557 edges and 586 evidence links**, including **22 typed
+affiliations** (up from 7). The pages include two news articles, two discussion
+threads and two company blog posts. There are **125 passing deterministic tests**.
+See the [quality comparison](docs/quality-review.md), [initial validation](docs/validation.md)
+for changed-seed and setup results, and the
 [assessment audit](docs/assessment.md) for requirement coverage.
 
 ## Setup
@@ -162,26 +163,49 @@ body offsets. Topic vocabulary cannot discover arbitrary new themes.
 
 Entity keys use Unicode normalization, case folding, whitespace and punctuation
 cleanup. IDs hash the entity type and canonical key. Explicit aliases correct
-known NER type mistakes. A person surname expands only if exactly one full
-person name in the document supports it. There is no fuzzy or global surname
-merge. URLs mistaken for names are discarded. This favors cautious merging but
-still cannot distinguish two people sharing a full name and type.
+known NER type mistakes. First names and surnames use a unique full name in the
+same paragraph/comment. Narrative sources can also use a unique document-wide
+surname; discussions cannot borrow evidence from unrelated comments. Overriding
+a surname's incorrect organization/location label requires human context, with
+guards for explicit places and configured organizations. Malformed full-name
+spans cannot guide other names. URLs and standalone company suffixes are filtered.
+There is no fuzzy matching, and same-full-name people remain a limitation.
 
-Relationships use adjacent entities in the same sentence, at most 12 intervening
-whitespace-separated tokens. They retain the exact supporting sentence, body
-offset and rule name. No confidence score is invented.
+### Entity example: Elon Musk
+
+In a comment containing `Elon Musk spoke. Musk replied as @elonmusk.`, all three
+forms resolve to one person node. This is an illustrative regression fixture,
+not a quotation from the crawl. The full name supplies context for the surname;
+the handle is explicitly configured. Tests cover the ambiguous case with both
+Elon and Kimbal Musk and a separate comment containing only Musk.
+
+The actual reprocessed graph resolves `Elon Musk` and `@elonmusk` to
+`4722d966e1a7f0e0af87fc39`. Configured lookup aliases work even when a page uses
+only the full name; they do not add mention counts. The graph also retains an
+unresolved Musk mention, so `/entity/Musk/network` returns 409 with candidates.
+This avoids claiming a confident identity without sufficient context. Use the
+full name or stable ID for the [Elon Musk network](http://127.0.0.1:8000/entity/Elon%20Musk/network?depth=1).
+
+Typed relationships use spaCy's existing dependency parse to bind named subjects,
+objects, coordinated people, passive agents and explicit roles within one
+sentence. Narrow phrase rules supplement the parse. The weak fallback uses only
+adjacent mentions with at most 12 intervening whitespace-separated tokens, and
+does not duplicate a typed pair in that sentence. Evidence retains the exact
+sentence, body offset and rule name. No confidence score is invented.
 
 | Relation | Direction and rule | Main limitation |
 | --- | --- | --- |
-| `affiliated_with` | Person → organization; employment/joining verbs or explicit role phrases | Historical roles have no end date; complex clauses and NER errors can mislead |
-| `responded_to` | Responder → addressed entity; explicit replied/responded-to phrase | Pronouns and structural thread replies are missed |
-| `quoted_by` | Quoted entity → quoting entity; active quoted or passive quoted-by phrase | Ordinary quotation attribution using “said” is not inferred |
+| `affiliated_with` | Person → organization; hiring, employment, founding, joining, leaving/dismissal or explicit roles | Reports historical association, not current employment; parsing/NER errors remain |
+| `responded_to` | Named responder → addressed entity; reply/respond predicate with a named target | Pronouns and structural thread replies are missed |
+| `quoted_by` | Quoted entity → quoting entity; active/passive quote predicate, including coordinated names | Ordinary quotation attribution using “said” is not inferred |
 | `mentioned_with` | Symmetric nearby co-mention when no typed rule matches | Lists, opinions and unrelated actors can produce noise |
 
-Obvious negation, questions and conditional/future words suppress typed claims,
-but can still emit weak co-mentions. The guard applies to the whole sentence,
-so unrelated uncertainty can suppress a valid relationship. Rules do not cross
-comment boundaries, resolve pronouns or establish factual truth.
+Negation, modal/conditional wording and denial/planning ancestors suppress
+predicate claims. Explicit role appositives can survive uncertainty in a later
+clause. Comments labeled as predictions/speculation and requests beginning with
+“please” do not produce typed claims. Rejected assertions can still be weak
+co-mentions. These guards are conservative heuristics, not complete linguistic
+scope resolution. Rules do not cross comments, resolve pronouns or establish truth.
 
 ### Storage and counting
 
@@ -194,7 +218,7 @@ comment boundaries, resolve pronouns or establish factual truth.
 | `sources` | Canonical URL, source type, latest normalized body and metadata |
 | `edge_evidence` | Edge/source linkage, first supporting sentence, timestamps, rule and body hash |
 | `node_mentions` | Distinct node/source observations |
-| `aliases` | Observed lookup keys and their canonical node IDs |
+| `aliases` | Configured and observed lookup keys and their canonical node IDs |
 
 Edge weight counts **distinct source URLs ever supporting that typed edge**.
 Node mention count also counts distinct URLs, not repeated words. Each page is
@@ -241,7 +265,7 @@ the live response also includes the root entity, timestamps and citations:
       "source": "6881f4c331e5ae5890bc6eff",
       "target": "95a3f7190d6397c1069d3c44",
       "relation": "affiliated_with",
-      "weight": 1
+      "weight": 2
     }
   ]
 }
@@ -272,8 +296,8 @@ between a pair count as one neighbor. All stored nodes, including isolates,
 remain in the denominator when weak edges are filtered. Ties use mention count,
 then name and ID. Responses include degree, mention count and relation types.
 
-In the verified graph, OpenAI has 91 neighbors and a score of approximately
-0.1293 across 705 nodes. With weak edges excluded, it has 3 neighbors. This
+In the improved graph, OpenAI has 97 neighbors and a score of approximately
+0.1357 across 716 nodes. With weak edges excluded, it has 14 neighbors. This
 measures connection breadth in the collected graph, not real-world influence;
 it misses intermediaries and depends strongly on seeds and extraction quality.
 
@@ -283,34 +307,43 @@ it misses intermediaries and depends strongly on seeds and extraction quality.
 
 The [Microsoft partnership post](https://blogs.microsoft.com/blog/2023/01/23/microsoftandopenaiextendpartnership/)
 identifies Sam Altman's executive role at OpenAI. The
-`person_role_organization` rule in [relationships.py](app/relationships.py)
-recognizes the CEO/of phrase between the person and organization and emits
+`dependency_role` rule in [relationships.py](app/relationships.py)
+binds the executive-role phrase to the person and organization and emits
 Sam Altman → `affiliated_with` → OpenAI. That matches what the historical source
 reports. It does not establish current employment. SQLite retains the sentence,
 rule, source URL, publication date and scrape time so the claim can be checked.
 
-The sample contains 7 distinct affiliation edges and 547 weak co-mention edges.
-There were no matched explicit reply or quotation phrases in this crawl; those
-rules are tested with deterministic fixtures. The strong/weak imbalance is a
-real quality limit, not evidence that all 554 edges are meaningful claims.
+The improved sample contains 22 distinct affiliation edges and 535 weak
+co-mention edges. The Guardian hiring statement now yields both Sam Altman →
+Microsoft and Greg Brockman → Microsoft. Newly recovered founding relationships
+also include several people listed together in one discussion comment, so these
+are not independent confirmations. No explicit reply or quotation phrases
+matched this crawl; those rules have deterministic tests. Most edges are still
+weak, and the increased typed count is not an accuracy score.
 
 ### B. A real entity normalization failure
 
 In the [Guardian seed](https://www.theguardian.com/technology/2023/nov/20/sam-altman-openai-exit-ai-microsoft),
-spaCy assigned the surname Altman different entity types. Person mentions can
-resolve to Sam Altman, while organization/location mentions remain separate.
+spaCy assigned the surname Altman different entity types. The original resolver
+left organization/location mentions separate. Context guards now correct six
+reviewed surname-type errors across the two news articles, including both people
+in the Microsoft hiring statement. Other unsupported type errors remain separate.
 The [Hacker News thread](https://news.ycombinator.com/item?id=38309611) also
-mentions both Sam and Annie Altman, making document-wide surname resolution
-ambiguous. `/entity/Altman/network` therefore returns 409 in the verified graph.
+mentions both Sam and Annie Altman. Comment-local matching can resolve a short
+name when that comment identifies it, without using a different reply as evidence.
+`/entity/Altman/network` still returns 409 in the improved graph.
 OpenAI's configured alias corrects its observed type errors, but adding a global
-Altman alias would incorrectly merge unrelated contexts. A useful improvement
-is comment-local disambiguation with explicit supporting context.
+Altman alias would incorrectly merge unrelated contexts. During review, malformed
+NER spans such as Will Sam incorrectly attracted short names; these spans are now
+excluded from contextual matching. Better coreference and NER remain future work.
 
 ### C. Suppressing noisy edges at scale
 
-The existing sentence boundary, adjacency limit and distinct-URL counting reduce
-document-wide pair explosions and repeated-comment inflation. The API's
-`include_weak=false` immediately separates typed claims from the 547 weak edges.
+The existing sentence boundary, weak-pair adjacency limit, named dependency
+arguments and distinct-URL counting reduce document-wide pair explosions and
+repeated-comment inflation. The API's `include_weak=false` separates typed claims
+from the 535 weak edges. Actual review caught a request to make Elon Musk CEO
+being treated as an affiliation; request/prediction guards now reject that claim.
 For a larger corpus, group evidence by publisher and content hash before counting
 support, and flag edges whose evidence comes from one syndicated story or mostly
 generic topic mentions. Review samples by `rule` and source type to measure

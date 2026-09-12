@@ -21,8 +21,10 @@ will be treated as UTC and this assumption logged by normalization.
   order do not change IDs. Different types cannot accidentally share an ID.
 - A small external alias file can map handles and known variants to a canonical
   name. URLs never occur in extraction logic.
-- A surname is expanded only when exactly one full person name in that content
-  has that surname. Ambiguous names remain separate. No fuzzy matching.
+- Short names first use a unique full-name candidate in the same paragraph/comment.
+  Narrative sources can fall back to a unique document-wide surname; discussions
+  cannot borrow that context from another reply. Type corrections need human
+  context and protect explicit places/known organizations. No fuzzy matching.
 - Mention offsets refer to the exact normalized body; the relationship stage
   uses those offsets to resolve sentence entities.
 - API lookup can use stored aliases, but ambiguity returns an explicit error.
@@ -37,7 +39,8 @@ title, body, author, published_at and content hash.
 `edge_evidence`: unique `(edge_id, source_id)`, first observed_at,
 last_observed_at, supporting sentence, sentence offset and extraction rule.
 `node_mentions`: unique `(node_id, source_id)` with first observation time.
-`aliases`: lookup keys associated with entity IDs, including observed surfaces.
+`aliases`: lookup keys associated with entity IDs, including observed surfaces
+and explicit configured aliases for encountered entities.
 
 The extra linkage tables support the PDF's required provenance, temporal
 analysis and idempotent reruns. They add a few joins, avoiding a history service.
@@ -68,8 +71,11 @@ transaction per content item, with foreign keys and uniqueness constraints.
   this is weak co-mention evidence, not a claim of affiliation.
 
 Retain the exact sentence and rule name, not an invented confidence number.
-Limit pair distance and reject obvious negation/conditional patterns for typed
-rules. Syntax, pronouns, irony and complex clauses will still cause errors.
+Use named dependency arguments and role bindings for typed rules. Limit pair
+distance for weak co-mentions. Reject negation, conditional/modal and
+denial/planning context, with explicit prediction/request guards. Syntax,
+pronouns, irony and complex clauses will still cause errors. See the
+[quality review](quality-review.md) for actual improvements and failures.
 
 ## Analysis contracts
 

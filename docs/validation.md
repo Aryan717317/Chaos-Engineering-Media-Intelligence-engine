@@ -1,5 +1,10 @@
 # Final validation
 
+This records the initial implementation. The subsequent
+[quality review](quality-review.md) reports the current extraction results,
+125 tests and updated API examples. The setup and changed-seed checks below
+remain evidence of the original end-to-end run.
+
 Verified on 2026-09-12 with Python 3.12.14, the pinned requirements and
 `en_core_web_sm` 3.8.0. Raw page bodies, databases and machine-readable reports
 remain in ignored `data/`; the following records observed results, not fixtures.

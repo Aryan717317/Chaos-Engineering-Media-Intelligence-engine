@@ -76,9 +76,9 @@ explicit limits of this scoped solution; they are not hidden behind test counts.
 | Multiple source types | `config/sources.yaml`, `app/normalize.py` | News/discussion/blog contributed two pages each; changed-seed run contributed one each | New layouts can need new selectors; arbitrary-site quality is not guaranteed |
 | Configurable crawling | `app/config.py`, `app/crawler.py` | Three replaced URLs, depth-0 live run; deterministic depth/budget/domain tests | Whitelist is not an asset/redirect firewall; static rule configuration is deliberate |
 | Entity extraction | `app/extract.py`, topic vocabulary | Real people, organizations, locations and topics, with retained offsets | English NER and vocabulary coverage are imperfect |
-| Entity normalization | `app/entities.py`, alias vocabulary | Known OpenAI/handle variants converge; ambiguous surname returns 409 | Same-name people and document-wide surname scope need richer context |
-| Relationship quality | `app/relationships.py` | Seven affiliation edges inspected with evidence; four supported types tested | 547 weak edges; no live matched reply/quote phrases; larger precision study is future work |
-| Graph and provenance | `app/schema.sql`, `app/storage.py` | 554 edges, all traced; exact replay equality; weights checked against evidence | No retractions, content version archive or syndication deduplication |
+| Entity normalization | `app/entities.py`, alias vocabulary | Elon Musk/full name/handle tests; comment-local matching and six reviewed news type corrections | Ambiguous short names remain; same-name people and malformed NER need richer context |
+| Relationship quality | `app/relationships.py` | 22 affiliation edges after dependency and speculation-guard improvements; four supported types tested | 535 weak edges; no live matched reply/quote phrases; larger precision study is future work |
+| Graph and provenance | `app/schema.sql`, `app/storage.py` | 557 edges, all traced; exact replay equality; weights checked against evidence | No retractions, content version archive or syndication deduplication |
 | Depth-1/2 network | `app/queries.py`, `app/api.py` | Cycles/directions tested; eight live network requests checked | No pagination for large neighborhoods |
 | Emerging connections | `growth_reason`, `emerging_connections` | Live new-edge query; absolute/relative threshold and boundary tests | Heuristic significance; first observation is not event time |
 | Centrality | `central_entities` | Star/isolate/parallel-edge tests and actual top-five ranking | Measures degree, misses brokerage and real-world influence |
@@ -88,3 +88,6 @@ explicit limits of this scoped solution; they are not hidden behind test counts.
 See [final validation](validation.md) for observed counts, HTTP outcomes,
 repeatability and environment checks. The database and full scraped bodies are
 generated locally; no fake populated graph is supplied.
+
+The [quality review](quality-review.md) records the subsequent relationship and
+normalization improvements, inspected failures and their limits.

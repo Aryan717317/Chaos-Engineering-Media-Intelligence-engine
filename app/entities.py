@@ -85,7 +85,7 @@ def resolve_entities(body: str, mentions: list[Mention], aliases: list[AliasDefi
     lookup = alias_lookup(aliases)
     for definition in aliases:
         for surface in [definition.name, *definition.aliases]:
-            pattern = re.escape(surface).replace(r"\ ", r"\s+")
+            pattern = re.escape(surface).replace(r"\ ", r"[^\S\r\n]+")
             for match in re.finditer(r"(?<![\w@])" + pattern + r"(?!\w)", body, re.I):
                 known.append(Mention(text=match.group(), type=definition.type, canonical_name=definition.name,
                                      start=match.start(), end=match.end()))

@@ -146,3 +146,8 @@ def test_bad_ner_full_name_does_not_absorb_a_short_person_name(bad_anchor):
                 Mention(text="Sam", type="person", start=body.index("Sam spoke"), end=body.index("Sam spoke") + 3)]
     _, resolved = resolve_entities(body, mentions, [], source_type="discussion")
     assert resolved[-1].canonical_name == "Sam"
+
+
+def test_configured_full_name_cannot_span_two_comments():
+    aliases = [AliasDefinition(name="Elon Musk", type="person")]
+    assert resolve_entities("Elon\n\nMusk", [], aliases, source_type="discussion") == ([], [])
