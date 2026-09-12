@@ -77,6 +77,8 @@ class Evidence(BaseModel):
     published_at: datetime | None
     sentence: str
     rule: str
+    sentence_start: int
+    content_hash: str
 
 
 class GraphNode(BaseModel):
