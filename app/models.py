@@ -49,6 +49,7 @@ class Mention(BaseModel):
     type: EntityType
     start: int = Field(ge=0)
     end: int = Field(gt=0)
+    canonical_name: str | None = None
 
 
 class Entity(BaseModel):
