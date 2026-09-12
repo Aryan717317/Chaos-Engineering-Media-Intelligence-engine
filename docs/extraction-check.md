@@ -29,3 +29,25 @@ guessing a type for every ambiguous name.
 Topic detection is a phrase vocabulary in `config/topics.yaml`, with word
 boundaries and preference for longer overlapping phrases. It cannot discover
 arbitrary themes, and terms such as alignment can be used outside AI contexts.
+
+## Phase 5: canonical entities
+
+Known OpenAI mentions now become one organization ID even when the model gives
+them different types. Microsoft and configured handles use the same mechanism.
+The real Hacker News thread also contains multiple surface forms that resolve
+to Elon Musk. Canonical identities include the entity type and are independent
+of insertion order, case and repeated whitespace. Raw URLs misclassified as
+names are filtered after a real-data inspection revealed this failure.
+
+A concrete remaining failure is `Altman` in the Guardian seed. Its person
+mentions can map to Sam Altman, but the same surface labeled organization or
+location still becomes separate nodes. We deliberately do not assume an
+organization sharing a surname is a person. The long Hacker News thread also
+mentions both Sam and Annie Altman, so its standalone person surname is
+ambiguous and remains unresolved. Document-wide surname matching loses recall
+on large threads; comment-local evidence would be a useful next improvement.
+
+The initial check found 30/698/8/29/4/15 canonical entities across the six pages,
+before the raw-URL filter. These counts are diagnostic, not ground-truth counts.
+Aliases are explicit and versioned in `config/aliases.yaml`; conflicting aliases
+fail validation rather than letting file order choose an identity.
