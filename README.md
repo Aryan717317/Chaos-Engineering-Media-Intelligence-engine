@@ -5,11 +5,11 @@ of people, organisations, places and topics. An analyst can look up an entity,
 follow its connections, see which relationships are gaining attention, and check
 the original text behind each result.
 
-I kept the backend small: a Python pipeline, a SQLite database and three FastAPI
+The backend : a Python pipeline, a SQLite database and three FastAPI
 endpoints. Crawl4AI collects the pages, and spaCy plus explicit rules extract the
 entities and relationships. It runs locally and does not need paid APIs or API keys.
 
-**Author:** Aryan Bharat Kumar · **Student ID:** 22BAI71264 ·
+**Author:** Aryan Bharat Kumar ·
 **GitHub:** [Aryan717317](https://github.com/Aryan717317)
 
 [Run it locally](#run-it-locally) · [Try the API](#try-the-api) ·
