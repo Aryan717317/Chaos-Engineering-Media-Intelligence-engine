@@ -1,0 +1,30 @@
+# Optional discussion-source check; the main three-source demo uses sources.yaml.
+# Reddit denied the live check through robots.txt. Keep --strict enabled so a
+# successful Hacker News page cannot hide the Reddit failure. See
+# docs/discussion-sources.md before running this configuration.
+seeds:
+  - url: https://news.ycombinator.com/item?id=38309611
+    source_type: discussion
+  - url: https://www.reddit.com/r/MachineLearning/comments/17xp85q/
+    source_type: discussion
+max_depth: 0
+max_pages: 2
+max_links_per_page: 0
+delay_seconds: 1
+page_timeout_ms: 45000
+allowed_domains:
+  - news.ycombinator.com
+  - reddit.com
+source_rules:
+  news.ycombinator.com:
+    source_type: discussion
+    comment_selector: .commtext
+    title_selector: .titleline
+    author_selector: .fatitem .hnuser
+    published_selector: .fatitem .age
+    body_selector: .toptext
+  reddit.com:
+    source_type: discussion
+    # Site-specific selectors remain unverified because crawling was denied.
+    # If access becomes permitted, inspect the returned HTML before relying on
+    # the generic discussion fallback or counting this as a supported source.

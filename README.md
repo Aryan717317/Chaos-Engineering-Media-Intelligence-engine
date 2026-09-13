@@ -43,6 +43,19 @@ mistakes. The [validation notes](docs/validation.md) cover the original live run
 a run with different seed URLs, and setup checks. The
 [assessment checklist](docs/assessment.md) maps the work to the PDF's rubric.
 
+### Hacker News and a subreddit
+
+**Hacker News is already part of the working pipeline.** The default sources
+include [the discussion about OpenAI's leadership change](https://news.ycombinator.com/item?id=38309611),
+and the reviewed graph contains two Hacker News pages with traceable evidence.
+
+The optional [discussion configuration](config/discussion-sources.yaml) includes
+that thread and [an r/MachineLearning discussion of the same event](https://www.reddit.com/r/MachineLearning/comments/17xp85q/).
+Reddit denied the live crawler check through `robots.txt`, so it is **configured
+but not verified as an ingested source**. The six-page results and screenshots
+do not include Reddit. The [source check notes](docs/discussion-sources.md)
+record the denial and explain what remains to be validated.
+
 ## Run it locally
 
 Use Python 3.11 or newer. The project was verified on Windows with Python 3.12.14.
