@@ -1,146 +1,72 @@
 # Media intelligence engine
 
-A one-day backend assessment: crawl real web content, extract entities and typed
-relationships, keep a traceable graph in SQLite, and expose three analysis APIs.
+This project turns news articles, discussion threads and blog posts into a graph
+of people, organisations, places and topics. An analyst can look up an entity,
+follow its connections, see which relationships are gaining attention, and check
+the original text behind each result.
 
-Author: Aryan Bharat Kumar.
+I kept the backend small: a Python pipeline, a SQLite database and three FastAPI
+endpoints. Crawl4AI collects the pages, and spaCy plus explicit rules extract the
+entities and relationships. It runs locally and does not need paid APIs or API keys.
 
-GitHub: [Aryan717317](https://github.com/Aryan717317) · Student ID: 22BAI71264
+**Author:** Aryan Bharat Kumar · **Student ID:** 22BAI71264 ·
+**GitHub:** [Aryan717317](https://github.com/Aryan717317)
 
-Reprocessing the verified six-page crawl with the improved extraction produced
-**716 entities, 557 edges and 586 evidence links**, including **22 typed
-affiliations** (up from 7). The pages include two news articles, two discussion
-threads and two company blog posts. There are **125 passing deterministic tests**.
-See the [quality comparison](docs/quality-review.md), [initial validation](docs/validation.md)
-for changed-seed and setup results, and the
-[assessment audit](docs/assessment.md) for requirement coverage.
+[Run it locally](#run-it-locally) · [Try the API](#try-the-api) ·
+[Screenshots](#working-project-screenshots) · [How it works](#how-it-works) ·
+[Assessment reflections](#assessment-reflections)
 
-## Working project screenshots
+## What the current run shows
 
-These captures show actual requests to the running Swagger API, using the
-reprocessed six-page graph described above. Captured on 13 September 2026 in
-India (12 September UTC). Some response boxes are scrolled to show the relevant
-fields. Click an image to view it at full resolution, or expand a demonstration
-below. The final image is a labeled verification report.
+The source configuration follows historical OpenAI coverage from The Guardian,
+Hacker News and Microsoft's blog. News supplies reporting, discussions add public
+reactions, and company posts give the organisation's own account. Their shared
+subject gives the graph entities to connect across different page layouts.
 
-![Swagger overview showing the three analyst API endpoints](docs/screenshots/01-api-overview.png)
+| Result | Verified value |
+| --- | ---: |
+| Real pages processed | 6: two news, two discussion, two blog |
+| Canonical entities | 716 |
+| Connections | 557 |
+| Typed affiliations | 22 |
+| Weak co-mentions | 535 |
+| Edge-to-source evidence records | 586 |
+| Automated tests | 125 passed, 1 warning |
 
-<details>
-<summary>Run a network query and inspect relationship evidence</summary>
+These graph counts come from reprocessing the saved real crawl after improving
+relationship extraction and name resolution. Most edges are still weak
+co-mentions; the typed count is not an accuracy score. Reply and quotation rules
+are implemented and tested, but found no matching phrases in this six-page sample.
 
-Select **Try it out**, enter `Mira Murati`, set `depth=1` and
-`include_weak=false`, then click **Execute**. This asks for direct connections
-and excludes weak co-mentions.
+The [quality review](docs/quality-review.md) records the changes and remaining
+mistakes. The [validation notes](docs/validation.md) cover the original live run,
+a run with different seed URLs, and setup checks. The
+[assessment checklist](docs/assessment.md) maps the work to the PDF's rubric.
 
-![Network controls with Mira Murati, depth 1 and weak connections excluded](docs/screenshots/02-network-controls.png)
+## Run it locally
 
-The actual **Server response** returns HTTP 200. Mira Murati's
-`affiliated_with` edge to OpenAI has weight 2, representing two supporting
-source URLs. The scrolled response shows a Guardian URL, the source sentence,
-publication and observation times, and the `dependency_role` extraction rule.
-The relationship records a historical source claim, not current employment.
+Use Python 3.11 or newer. The project was verified on Windows with Python 3.12.14.
+Run the commands below from the repository root.
 
-![Successful network response showing the typed relationship and original source evidence](docs/screenshots/03-relationship-evidence.png)
-
-</details>
-
-<details>
-<summary>Find central entities</summary>
-
-With `limit=3` and `include_weak=false`, OpenAI has 14 unique typed neighbors
-and degree centrality approximately 0.01958. Microsoft has 3 neighbors. Sam
-Altman is the third result, below this visible excerpt. This measures connection
-breadth within the collected graph.
-
-![Centrality response showing the metric, 716 total nodes and ranked entities](docs/screenshots/04-central-entities.png)
-
-</details>
-
-<details>
-<summary>Query newly observed connections</summary>
-
-The request uses `since=2026-01-01T00:00:00Z` and excludes weak edges. The
-response exposes the thresholds for growing existing edges: 3 additional
-source URLs and 50% relative growth.
-
-![New-connections response showing the timestamp boundary and growth thresholds](docs/screenshots/05a-new-connections-thresholds.png)
-
-Scrolling within the same response shows an edge with `reason=new`,
-`weight_before=0` and `increase=1`, alongside its discussion-source evidence.
-The complete response contains 22 typed edges. Here, **new means newly observed
-by the pipeline**, not that the historical event happened in 2026. A statement
-in a discussion is not an independent fact check.
-
-![New connection with supporting evidence and the reason and increase fields](docs/screenshots/05b-new-connections-result.png)
-
-</details>
-
-<details>
-<summary>Verify Elon Musk and @elonmusk resolve to the same person</summary>
-
-Both requests return the same canonical name and node ID,
-`4722d966e1a7f0e0af87fc39`. `%40elonmusk` in the second request URL is the
-URL-encoded form of `@elonmusk`. The full responses were also checked for
-equality. This demonstrates configured alias lookup without adding another
-node or inflating mention counts.
-
-![Elon Musk lookup returning the canonical person node](docs/screenshots/06-elon-musk.png)
-
-![Handle lookup returning the identical Elon Musk person node](docs/screenshots/07-elonmusk-handle.png)
-
-These requests use `include_weak=false`. This sample contains no retained typed
-direct edges for Elon Musk, so `edges` is empty; his weak co-mentions are filtered
-out.
-
-</details>
-
-<details>
-<summary>Handle an ambiguous surname without forcing a merge</summary>
-
-`Musk` returns the intended HTTP 409 conflict with two candidate IDs: Elon Musk
-and an unresolved surname mention. Use the canonical name or a candidate ID to
-disambiguate. Swagger labels this response **Undocumented** because its 409
-schema is not declared in the OpenAPI documentation. Contextual surname merging
-is tested separately; the resolver does not globally merge every bare `Musk`.
-
-![Expected ambiguity response for Musk showing two candidate person nodes](docs/screenshots/08-ambiguous-surname.png)
-
-</details>
-
-<details>
-<summary>Inspect real-source coverage and test results</summary>
-
-This generated report presents the actual SQLite counts and saved test output:
-6 real pages, 716 entities, 557 edges, 586 source-evidence records, and **125
-tests passed with 1 warning**. The graph includes 22 typed affiliations and 535
-weak co-mentions. The report lists the source pages and is labeled separately
-from the application interface. These counts demonstrate coverage, not measured
-extraction precision.
-
-![Verification report with graph counts, actual passing test output and six real source URLs](docs/screenshots/09-data-and-tests.png)
-
-</details>
-
-## Setup
-
-Python 3.11+ is required. Development and verification used Python 3.12.14 on
-Windows. Run commands from the repository root. No API keys are required.
+### 1. Clone the repository and create an environment
 
 ```shell
-git clone https://github.com/Aryan717317/Chaos-Engineering-Media-Intelligence-engine-.git
-cd Chaos-Engineering-Media-Intelligence-engine-
+git clone https://github.com/Aryan717317/Chaos-Engineering-Media-Intelligence-engine.git
+cd Chaos-Engineering-Media-Intelligence-engine
 python -m venv .venv
 ```
 
-Activate the environment in PowerShell:
+Activate it in PowerShell:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-On Linux/macOS, use `source .venv/bin/activate`. If activation is unavailable,
-invoke `.venv\Scripts\python.exe` on Windows or `.venv/bin/python` on Unix in
-place of `python` in the commands below.
+On Linux or macOS, use `source .venv/bin/activate`. If activation is unavailable,
+replace `python` in later commands with `.venv\Scripts\python.exe` on Windows
+or `.venv/bin/python` on Linux/macOS.
+
+### 2. Install the dependencies, model and browser
 
 ```shell
 python -m pip install -r requirements.txt
@@ -149,215 +75,65 @@ python -m playwright install chromium
 python -m pip check
 ```
 
-The browser and model require an initial download. Linux hosts may also need
-Playwright's browser system dependencies (`python -m playwright install --with-deps chromium`).
-Direct Python dependencies and the model version are pinned; transitive packages
-are resolved by pip. The application uses Crawl4AI, spaCy, Beautiful Soup,
-PyYAML, Pydantic, FastAPI and Uvicorn. Tests use pytest and HTTPX. SQLite access
-uses Python's `sqlite3`; the application does not use an ORM, a graph library or
-a paid NLP service. Crawl4AI has additional transitive dependencies.
+The model and browser need an initial download. On Linux, Playwright may also
+need system packages; use `python -m playwright install --with-deps chromium`
+if its browser dependencies are missing. Direct dependencies and the spaCy model
+are pinned; pip resolves their transitive dependencies.
 
-## Run
+### 3. Build the graph, then start the API
 
 ```shell
 python scripts/run_pipeline.py --strict --crawl-output data/crawl.json
 python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
 ```
 
-The first command creates `data/graph.db` and `data/run-summary.json`. The second
-serves the existing graph, with interactive API documentation at
-[localhost:8000/docs](http://127.0.0.1:8000/docs). Starting the API alone creates
-an empty database; it does not crawl or load the NLP model.
+Wait for the pipeline to finish before starting the API. It writes the graph to
+`data/graph.db` and a run report to `data/run-summary.json`. The report lists page
+failures, missing source types and database counts.
 
-Use `--db PATH` for a different pipeline database and `MEDIA_DB_PATH` for the
-API. The pipeline also honors `MEDIA_DB_PATH` when `--db` is omitted. Set both
-entry points to the same database. In PowerShell:
+Then open **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)**. Keep the API
+process running while you use the page. This is a local address, so someone
+reviewing the repository needs to run the project on their own computer.
 
-```powershell
-$env:MEDIA_DB_PATH = 'data/experiment.db'
-python scripts/run_pipeline.py --strict
-python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
-```
+The database and full scraped pages are generated locally and are excluded from
+Git. Starting only the API creates an empty database; it does not run the crawler.
+Live pages can change, so a new crawl may produce different counts from the saved
+screenshots.
 
-For crawling alone or debugging extraction from saved real content:
+## Try the API
 
-```shell
-python scripts/crawl_sources.py --config config/sources.yaml --output data/crawl.json
-python scripts/run_pipeline.py --from-crawl data/crawl.json --strict
-python -m pytest -q --basetemp=tmp/tests
-```
+Start with a small query that makes the evidence easy to read:
 
-Replay preserves the saved observation times and is labeled `replay` in the
-report. It does not count as a new live crawl. No populated database or full
-scraped archive is committed; `data/` and temporary test output are ignored.
+1. Expand **GET /entity/{name}/network** and select **Try it out**.
+2. Enter `Mira Murati`, set `depth` to `1`, and choose `false` for `include_weak`.
+3. Click **Execute**. Under **Server response**, a `200` status means the request
+   succeeded. Read **Response body** for the actual result.
+4. Scroll inside that response to find `edges` and their `evidence`. The source
+   URL, sentence and dates explain why each connection exists.
 
-Pipeline exit codes: `0` means content was processed for every configured source
-type; `1` means no usable content, a missing type, or any page failure under
-`--strict`; `2` means a configuration, model, file or database failure. Without
-strict mode, partial page failures are still listed in the report. The crawl-only
-command returns `0` if at least one page was fetched and `1` if none were fetched.
+Swagger also shows an **Example Value** farther down the page. That describes
+the response format; it is separate from the data returned by your request.
 
-## Configure new sources
-
-[config/sources.yaml](config/sources.yaml) owns all source URLs, crawl limits and
-HTML selectors. No source URL is embedded in application logic. The sample
-uses historical coverage from The Guardian, Hacker News and Microsoft's blog
-because their shared entities make cross-source relationships inspectable.
-
-```yaml
-seeds:
-  - url: https://example.org/story
-    source_type: news
-max_depth: 1
-max_pages: 6
-max_links_per_page: 1
-delay_seconds: 1
-page_timeout_ms: 45000
-allowed_domains: [example.org]
-source_rules:
-  example.org:
-    source_type: news
-    body_selector: article
-    follow_pattern: '/story'
-```
-
-This is a configuration example, not a source of sample graph data. Replace
-seeds and whitelist entries together. Plain URL strings are also accepted as
-seeds; their type comes from the matching domain rule. Set `source_type` on the
-domain rule for discovered pages too. Domains match their subdomains, with the
-most specific rule taking precedence. A missing rule defaults to `web`.
-
-Seeds have depth 0 and take priority over discovered links. Canonical URLs remove
-tracking parameters and fragments, preserve content queries, and deduplicate
-cycles. Page budgets include failed scheduled URLs. Robots checks are delegated
-to Crawl4AI. The whitelist controls scheduled links and acceptance of final
-redirect URLs; it is not a browser network firewall for redirect hops or assets.
-
-Optional selectors are `body_selector`, `comment_selector`, `title_selector`,
-`author_selector` and `published_selector`. Invalid selectors fail before
-crawling. Missing matches fall back to article/main/body extraction and log
-warnings where applicable. Normalized content always has URL, type, scrape
-time, title and body; author/publication date can be null. A missing title falls
-back to the URL, and empty/challenge content is rejected. Discussion comments
-stay separate, with nested reply text removed from parent blocks. Thread-level
-author/date metadata is retained; individual comment authors are not modeled.
-
-[config/topics.yaml](config/topics.yaml) defines phrase-based topics and
-[config/aliases.yaml](config/aliases.yaml) defines known canonical names and
-handles. Both can change without editing Python. Use a fresh `--db` when comparing
-extraction configurations: the existing graph accumulates historical evidence.
-
-## How the graph is built
-
-```text
-config -> Crawl4AI -> normalized content -> spaCy + topic phrases
-       -> cautious aliases -> sentence rules -> SQLite -> FastAPI
-```
-
-```text
-app/       contracts, crawl, normalization, extraction, storage, queries, API
-config/    source settings, topics and aliases
-scripts/   live pipeline and crawl-only commands
-tests/     deterministic fixtures and regression tests
-docs/      design decisions, real-data checks and assessment audit
-```
-
-spaCy supplies people, organizations and locations. Topics use whole-phrase
-matches with longer overlapping phrases preferred. NLP processes paragraphs and
-comments in bounded batches; long blocks split at whitespace while retaining
-body offsets. Topic vocabulary cannot discover arbitrary new themes.
-
-Entity keys use Unicode normalization, case folding, whitespace and punctuation
-cleanup. IDs hash the entity type and canonical key. Explicit aliases correct
-known NER type mistakes. First names and surnames use a unique full name in the
-same paragraph/comment. Narrative sources can also use a unique document-wide
-surname; discussions cannot borrow evidence from unrelated comments. Overriding
-a surname's incorrect organization/location label requires human context, with
-guards for explicit places and configured organizations. Malformed full-name
-spans cannot guide other names. URLs and standalone company suffixes are filtered.
-There is no fuzzy matching, and same-full-name people remain a limitation.
-
-### Entity example: Elon Musk
-
-In a comment containing `Elon Musk spoke. Musk replied as @elonmusk.`, all three
-forms resolve to one person node. This is an illustrative regression fixture,
-not a quotation from the crawl. The full name supplies context for the surname;
-the handle is explicitly configured. Tests cover the ambiguous case with both
-Elon and Kimbal Musk and a separate comment containing only Musk.
-
-The actual reprocessed graph resolves `Elon Musk` and `@elonmusk` to
-`4722d966e1a7f0e0af87fc39`. Configured lookup aliases work even when a page uses
-only the full name; they do not add mention counts. The graph also retains an
-unresolved Musk mention, so `/entity/Musk/network` returns 409 with candidates.
-This avoids claiming a confident identity without sufficient context. Use the
-full name or stable ID for the [Elon Musk network](http://127.0.0.1:8000/entity/Elon%20Musk/network?depth=1).
-
-Typed relationships use spaCy's existing dependency parse to bind named subjects,
-objects, coordinated people, passive agents and explicit roles within one
-sentence. Narrow phrase rules supplement the parse. The weak fallback uses only
-adjacent mentions with at most 12 intervening whitespace-separated tokens, and
-does not duplicate a typed pair in that sentence. Evidence retains the exact
-sentence, body offset and rule name. No confidence score is invented.
-
-| Relation | Direction and rule | Main limitation |
-| --- | --- | --- |
-| `affiliated_with` | Person → organization; hiring, employment, founding, joining, leaving/dismissal or explicit roles | Reports historical association, not current employment; parsing/NER errors remain |
-| `responded_to` | Named responder → addressed entity; reply/respond predicate with a named target | Pronouns and structural thread replies are missed |
-| `quoted_by` | Quoted entity → quoting entity; active/passive quote predicate, including coordinated names | Ordinary quotation attribution using “said” is not inferred |
-| `mentioned_with` | Symmetric nearby co-mention when no typed rule matches | Lists, opinions and unrelated actors can produce noise |
-
-Negation, modal/conditional wording and denial/planning ancestors suppress
-predicate claims. Explicit role appositives can survive uncertainty in a later
-clause. Comments labeled as predictions/speculation and requests beginning with
-“please” do not produce typed claims. Rejected assertions can still be weak
-co-mentions. These guards are conservative heuristics, not complete linguistic
-scope resolution. Rules do not cross comments, resolve pronouns or establish truth.
-
-### Storage and counting
-
-[app/schema.sql](app/schema.sql) defines the graph and provenance explicitly:
-
-| Table | Purpose |
+| Analyst question | Request |
 | --- | --- |
-| `nodes` | Stable ID, canonical name/type, first observation and mention count |
-| `edges` | Typed endpoints, weight, first/last observation |
-| `sources` | Canonical URL, source type, latest normalized body and metadata |
-| `edge_evidence` | Edge/source linkage, first supporting sentence, timestamps, rule and body hash |
-| `node_mentions` | Distinct node/source observations |
-| `aliases` | Configured and observed lookup keys and their canonical node IDs |
+| Who is connected to this person, and how? | `GET /entity/Mira%20Murati/network?depth=1&include_weak=false` |
+| What is one step beyond their direct connections? | `GET /entity/OpenAI/network?depth=2&include_weak=false` |
+| Which connections have appeared or grown since a date? | `GET /connections/new?since=2026-01-01T00:00:00Z&include_weak=false` |
+| Which entities have the most connections? | `GET /entities/central?limit=5&include_weak=false` |
 
-Edge weight counts **distinct source URLs ever supporting that typed edge**.
-Node mention count also counts distinct URLs, not repeated words. Each page is
-stored transactionally, with foreign keys and uniqueness constraints. Repeated
-crawls update last observation times without adding another source vote. An
-older imported snapshot can move the first observation earlier. Source bodies
-keep their latest version; evidence retains the earliest citation and its hash.
+All three endpoints include weak `mentioned_with` edges by default. Set
+`include_weak=false` to focus on typed relationships. A typed relationship still
+needs its supporting text checked; the filter is not a correctness guarantee.
 
-Observation times are UTC and differ from publication/event times. Historical
-evidence is not retracted when a page changes or removes a claim. Distinct URLs
-can also be syndicated copies, so weight is not a count of independent witnesses.
-See [design details](docs/design.md) for these trade-offs.
+Network responses contain the root `entity`, the requested `depth`, and `nodes`
+and `edges` with stable IDs. Edges refer to those IDs and include their type,
+weight and evidence, so a frontend can use the response as graph data. Traversal
+follows incoming and outgoing links and preserves each edge's direction. At
+depth 2 it returns the traversed edges, without adding unrelated links solely
+between nodes reached at the outer boundary.
 
-## API
-
-All endpoints accept `include_weak=false` to exclude `mentioned_with` edges.
-
-| Request | Behavior |
-| --- | --- |
-| `GET /entity/{name}/network?depth=2` | Traverse incoming/outgoing links for depth 1 or 2; preserve edge direction and include evidence |
-| `GET /connections/new?since=2026-01-01T00:00:00Z` | Return new or significantly growing edges and their endpoint nodes |
-| `GET /entities/central?limit=20` | Rank entities by normalized undirected degree; limit 1–100 |
-
-Names can be URL-encoded or replaced with a stable node ID. Unknown names return
-404. Ambiguous aliases return 409 with candidate IDs. Invalid depth, limit or
-timestamp returns 422. `since` must include a timezone; URL-encode `+` in an
-offset, or use `Z`. Empty/future connection windows return an empty graph.
-
-Network JSON contains stable `nodes` and `edges`; edges include `source`,
-`target`, `relation`, `weight` and evidence. Depth 2 returns traversed edges,
-not additional edges solely between nodes first reached at the outer boundary.
-The following is a **field excerpt** from the verified Mira Murati network;
-the live response also includes the root entity, timestamps and citations:
+Here is a shortened excerpt from the verified Mira Murati response. The full
+response also includes timestamps and the evidence records.
 
 ```json
 {
@@ -377,117 +153,428 @@ the live response also includes the root entity, timestamps and citations:
 }
 ```
 
-### Emerging connections
+Use a canonical name or a node ID if a short name is ambiguous. Unknown names
+return `404`; ambiguous names return `409` with candidate IDs. Invalid depth,
+limit or timestamp values return `422`. Depth accepts 1 or 2, and the centrality
+limit accepts 1–100. The `since` timestamp needs a timezone: use `Z`, or URL-encode
+the `+` in a numeric offset. A future boundary returns no new connections.
 
-For each edge, `weight_before` counts source evidence first observed strictly
-before `since`; `increase` counts first observations at or after it.
+### What counts as a new or growing connection?
 
-- **New:** baseline is zero and increase is positive.
-- **Growing:** baseline is positive, increase is at least 3 URLs, and increase
-  is at least 50% of baseline.
+In [queries.py](app/queries.py), `weight_before` counts supporting source URLs
+first observed before `since`. `increase` counts those first observed at or after
+the boundary.
 
-Responses include `reason`, `weight_before`, `increase`, `relative_increase`
-and the applied thresholds. New edges have a null relative increase because
-their baseline is zero. Three additional URLs resist single-page noise; the
-50% condition also requires proportional change. This is an explainable
-heuristic, not a calibrated significance test. It misses small important
-stories and slow growth on established edges. A first crawl of old articles
-makes their relationships newly *observed*, not newly occurring events.
+- **New:** no supporting URLs before the boundary, and at least one afterwards.
+- **Growing:** an existing connection gains at least **3 URLs**, and the gain is
+  at least **50% of its earlier weight**. Both conditions must hold.
 
-### Centrality
+For example, an edge going from 4 sources to 7 qualifies: it gained 3 sources,
+or 75%. An edge going from 20 to 23 does not: the gain is only 15%. These are
+illustrations of the rule, not additional observations from the crawl.
 
-`degree_centrality = unique undirected neighbors / (total nodes - 1)`, or zero
-when the graph has fewer than two nodes. Multiple relation types/directions
-between a pair count as one neighbor. All stored nodes, including isolates,
-remain in the denominator when weak edges are filtered. Ties use mention count,
-then name and ID. Responses include degree, mention count and relation types.
+I chose the absolute threshold to avoid flagging every single-page addition,
+and the relative threshold to require a meaningful change for established edges.
+It is a simple heuristic. It can miss a useful single-source story and gradual
+growth on a well-covered subject.
 
-In the improved graph, OpenAI has 97 neighbors and a score of approximately
-0.1357 across 716 nodes. With weak edges excluded, it has 14 neighbors. This
-measures connection breadth in the collected graph, not real-world influence;
-it misses intermediaries and depends strongly on seeds and extraction quality.
+The response includes the thresholds, `reason`, `weight_before`, `increase` and
+`relative_increase`. New edges have a null relative increase because their
+baseline is zero. **Time here means when the pipeline observed the evidence.**
+Crawling a 2023 article in 2026 creates a newly observed connection, not a new
+2026 event.
+
+### What does centrality measure?
+
+The score is normalised degree:
+
+```text
+degree_centrality = unique undirected neighbours / (total nodes - 1)
+```
+
+I chose it because it directly answers who has the broadest set of connections
+in this graph. Multiple edge types or directions between the same pair count as
+one neighbour. The denominator includes all stored nodes, including isolated
+ones, even when weak edges are filtered. A graph with fewer than two nodes gets
+a score of zero. Ties use mention count, then name and ID.
+
+In the reviewed graph, OpenAI has 97 neighbours overall and 14 when weak edges
+are excluded. The latter gives `14 / 715`, approximately `0.01958`. The response
+also includes mention count and relation types. Degree does not identify people
+who bridge otherwise separate groups, and it is strongly affected by the chosen
+sources and extraction mistakes. It measures this corpus's connections, not
+real-world influence.
+
+## How it works
+
+```text
+Seed URLs and source settings
+    -> Crawl4AI
+    -> common content schema
+    -> spaCy entities + configured topics
+    -> name resolution + relationship rules
+    -> SQLite nodes, edges and source evidence
+    -> FastAPI queries
+```
+
+| Part | What it does |
+| --- | --- |
+| Crawl4AI | Fetches configured pages through a browser |
+| Beautiful Soup | Reads article and discussion HTML into a common format |
+| spaCy | Finds names and supplies the sentence parse used by relationship rules |
+| PyYAML | Loads source settings, topics and known aliases |
+| SQLite and Python's `sqlite3` | Store the graph and answer its queries |
+| Pydantic, FastAPI and Uvicorn | Validate data and serve the API |
+| pytest and HTTPX | Check extraction, storage and API behaviour |
+
+The code follows those stages in `app/`. The runnable commands are in `scripts/`,
+configuration is in `config/`, and checks are in `tests/`. More detailed decisions
+and data reviews are in [docs/](docs/).
+
+### Changing the sources
+
+Edit [config/sources.yaml](config/sources.yaml) to change seed URLs, crawl depth,
+page limits, allowed domains and HTML selectors. URLs live in configuration,
+not in Python extraction logic. The supplied crawl limits are:
+
+```yaml
+max_depth: 1
+max_pages: 6
+max_links_per_page: 1
+delay_seconds: 1
+page_timeout_ms: 45000
+```
+
+Seeds start at depth 0. When adding a new site, update `allowed_domains` and its
+`source_rules` as well as the seed list. Set the source type on the domain rule
+so discovered pages receive the right type too. A site without a matching rule
+defaults to `web`. The most specific domain rule wins, and rules also cover
+subdomains.
+
+Selectors such as `body_selector`, `comment_selector`, `title_selector`,
+`author_selector` and `published_selector` handle differences between sites.
+Invalid selectors fail early; missing matches use the available fallbacks and
+report warnings. Depth and page budgets keep runs bounded, duplicate URLs are
+removed, and failed pages still count towards the budget. Crawl4AI handles robots
+checks. The whitelist restricts scheduled pages and accepted final URLs; it does
+not filter every browser asset request.
+
+Every normalised item contains `source_url`, `source_type`, `scraped_at`, `title`
+and `body`, plus optional `author` and `published_at`. A missing title falls back
+to the URL. Empty or challenge pages are reported as failures. Discussion comments
+stay separate, and nested replies are removed from their parent's text to avoid
+duplication. Author and publication metadata describe the thread where available;
+the graph does not model individual comment authors or reply trees.
+
+### Extracting and resolving entities
+
+spaCy's `en_core_web_sm` model identifies people, organisations and locations.
+Topics come from whole-phrase matches in [config/topics.yaml](config/topics.yaml),
+so new themes outside that vocabulary can be missed. Text is processed in bounded
+paragraph/comment batches, with offsets retained against the normalised body.
+
+[entities.py](app/entities.py) cleans Unicode, case, spacing and punctuation,
+then creates a stable ID from the canonical name and type. Known variants and
+handles are configured in [config/aliases.yaml](config/aliases.yaml).
+
+Short names need context. A first name or surname can use a unique full name in
+the same paragraph or comment. Narrative articles can also use a unique surname
+match across the document; discussion comments cannot borrow a name from another
+reply. Correcting a surname's mistaken entity type also requires context indicating
+a person, with guards for places and known organisations. Phrases mistaken for
+full names cannot guide other merges. There is no fuzzy matching or general
+pronoun resolution.
+
+#### Entity example: Elon Musk
+
+In the test sentence `Elon Musk spoke. Musk replied as @elonmusk.`, all three
+forms resolve to one person. The full name supplies context for `Musk`, and the
+handle is a configured alias. This is a regression fixture, not a scraped quote.
+
+In the actual graph, `Elon Musk` and `@elonmusk` both return
+`4722d966e1a7f0e0af87fc39`. Configured lookup aliases work even if a page uses only
+the full name; they do not add mentions. A separate comment's unresolved `Musk`
+mention remains in the graph, so that bare surname returns `409` with candidates.
+Tests also cover a comment containing both Elon and Kimbal Musk. The resolver
+merges when the context supports it and leaves competing identities explicit.
+
+### Extracting relationships
+
+[relationships.py](app/relationships.py) uses spaCy's sentence parse to connect
+named subjects and objects, including coordinated names and passive wording.
+It also recognises explicit roles such as a named company's CTO. Narrow phrase
+rules supplement the parse.
+
+| Relation | Meaning and direction | How it is detected |
+| --- | --- | --- |
+| `affiliated_with` | Person → organisation | Employment, hiring, joining, founding, leaving/dismissal, or an explicit role |
+| `responded_to` | Responder → addressed entity | A reply/respond predicate with a named target |
+| `quoted_by` | Quoted entity → quoting entity | An explicit active or passive quote predicate |
+| `mentioned_with` | Symmetric weak co-mention | Nearby names in one sentence when no typed rule matches |
+
+The weak fallback considers adjacent mentions with at most 12 intervening
+whitespace-separated tokens. It does not add a weak duplicate for a pair already
+given a typed relation in that sentence.
+
+The rules reject negated, conditional and planned actions, along with explicit
+prediction labels and future-role requests. They still struggle with sarcasm,
+pronouns and complex clauses. `affiliated_with` includes historical departures
+and firings; it does not mean someone currently works there. `quoted_by` needs
+explicit quote wording and does not infer every attribution using “said”. These
+are explainable extraction rules, not a way to establish whether a claim is true.
+
+### Storage and source evidence
+
+The explicit SQLite schema is in [app/schema.sql](app/schema.sql).
+
+| Table | What it keeps |
+| --- | --- |
+| `nodes` | Canonical name and type, stable ID, first observation and mention count |
+| `edges` | Endpoint IDs, relation type, weight, first and last observation |
+| `sources` | Source URL and type, latest normalised body, title and available metadata |
+| `edge_evidence` | The edge/source link, supporting sentence, offset, rule, dates and body hash |
+| `node_mentions` | Which distinct sources mentioned each entity |
+| `aliases` | Known and observed names used to look up a canonical entity |
+
+**An edge's weight counts distinct source URLs that have supported that typed
+connection.** Mention count also counts distinct URLs, rather than repeated
+words. Crawling an unchanged page again updates its observation time without
+giving it another vote. Each page is stored in a transaction with uniqueness
+constraints and foreign keys.
+
+Evidence keeps the earliest supporting citation and its hash; the source row
+keeps the latest page content. Observation times are UTC and are separate from
+publication dates. If a page removes a claim, the historical edge remains.
+Different URLs can also carry copied stories, so source count does not guarantee
+independent confirmation. These choices are explained in [docs/design.md](docs/design.md).
 
 ## Assessment reflections
 
-### A. One actual relationship and whether it was correct
+### A. One real relationship: was it correct?
 
-The [Microsoft partnership post](https://blogs.microsoft.com/blog/2023/01/23/microsoftandopenaiextendpartnership/)
-identifies Sam Altman's executive role at OpenAI. The
-`dependency_role` rule in [relationships.py](app/relationships.py)
-binds the executive-role phrase to the person and organization and emits
-Sam Altman → `affiliated_with` → OpenAI. That matches what the historical source
-reports. It does not establish current employment. SQLite retains the sentence,
-rule, source URL, publication date and scrape time so the claim can be checked.
+The [Guardian report on Sam Altman's dismissal](https://www.theguardian.com/technology/2023/nov/17/openai-ceo-sam-altman-fired)
+contains this sentence in the saved, normalised text:
 
-The improved sample contains 22 distinct affiliation edges and 535 weak
-co-mention edges. The Guardian hiring statement now yields both Sam Altman →
-Microsoft and Greg Brockman → Microsoft. Newly recovered founding relationships
-also include several people listed together in one discussion comment, so these
-are not independent confirmations. No explicit reply or quotation phrases
-matched this crawl; those rules have deterministic tests. Most edges are still
-weak, and the increased typed count is not an accuracy score.
+> Mira Murati, OpenAI’s CTO, will become interim CEO in his place, according to the statement.
 
-### B. A real entity normalization failure
+The `dependency_role` rule in [relationships.py](app/relationships.py) binds
+Mira Murati to OpenAI through the explicit CTO role and emits
+`Mira Murati → affiliated_with → OpenAI`. That association matches the sentence.
+The rule uses the stated CTO role; it does not need to treat the future interim-CEO
+appointment as an established event.
 
-In the [Guardian seed](https://www.theguardian.com/technology/2023/nov/20/sam-altman-openai-exit-ai-microsoft),
-spaCy assigned the surname Altman different entity types. The original resolver
-left organization/location mentions separate. Context guards now correct six
-reviewed surname-type errors across the two news articles, including both people
-in the Microsoft hiring statement. Other unsupported type errors remain separate.
-The [Hacker News thread](https://news.ycombinator.com/item?id=38309611) also
-mentions both Sam and Annie Altman. Comment-local matching can resolve a short
-name when that comment identifies it, without using a different reply as evidence.
-`/entity/Altman/network` still returns 409 in the improved graph.
-OpenAI's configured alias corrects its observed type errors, but adding a global
-Altman alias would incorrectly merge unrelated contexts. During review, malformed
-NER spans such as Will Sam incorrectly attracted short names; these spans are now
-excluded from contextual matching. Better coreference and NER remain future work.
+The graph retains this sentence, its URL, publication time, observation time and
+extraction rule. A second Guardian page supports the same edge, giving it weight
+2. That is enough to explain the extracted relationship and inspect its evidence;
+it does not establish her current role. The response and source text are visible
+in the screenshots below.
 
-### C. Suppressing noisy edges at scale
+### B. Where does entity normalisation break?
 
-The existing sentence boundary, weak-pair adjacency limit, named dependency
-arguments and distinct-URL counting reduce document-wide pair explosions and
-repeated-comment inflation. The API's `include_weak=false` separates typed claims
-from the 535 weak edges. Actual review caught a request to make Elon Musk CEO
-being treated as an affiliation; request/prediction guards now reject that claim.
-For a larger corpus, group evidence by publisher and content hash before counting
-support, and flag edges whose evidence comes from one syndicated story or mostly
-generic topic mentions. Review samples by `rule` and source type to measure
-precision before changing thresholds. Preserve rejected evidence with a reason
-if auditability is needed. Requiring several independent sources improves
-precision but hides genuinely new single-source reports; expose that trade-off
-instead of treating a higher weight as automatic truth.
+In the [Guardian Microsoft hiring report](https://www.theguardian.com/technology/2023/nov/20/sam-altman-openai-exit-ai-microsoft),
+spaCy assigned some `Altman` surname mentions organisation or location types.
+Because identity includes the entity type, the original resolver kept those
+mentions apart from Sam Altman. That also caused the relationship stage to miss
+person-to-organisation links.
 
-### D. Replacing SQLite with Neo4j
+The context checks in [entities.py](app/entities.py) now correct six reviewed
+surname/type mistakes across the two news articles, including Altman and Brockman
+in the hiring statement. However, short names are still a real limit. The
+[Hacker News discussion](https://news.ycombinator.com/item?id=38309611) contains
+both Sam and Annie Altman, and the actual `/entity/Altman/network` lookup still
+returns `409`. A global `Altman → Sam Altman` alias would hide that ambiguity by
+merging unrelated mentions.
 
-The current [queries.py](app/queries.py) handles shallow traversal and simple
-counts directly. Neo4j would make variable-length paths, constrained multi-hop
-patterns and graph exploration easier as those queries grow. It would require
-a separate database service, deployment, driver and an ingestion rewrite,
-giving up the current single-file setup and straightforward SQL inspection.
-The current provenance, alias ambiguity and temporal counting rules would still
-need explicit modeling; switching databases would not fix extraction quality.
-The assignment's depth-1/2 queries do not justify that change.
+During review, malformed model output such as `Will Sam` also attracted short-name
+matches. Those spans are now excluded from guiding merges. The resolver can
+protect against these cases, but it cannot reliably separate people with identical
+full names or resolve every short name across comments. The
+[quality review](docs/quality-review.md) records these examples and their fixes.
 
-### E. Moving to continuous updates
+### C. How would I detect and suppress noisy edges at scale?
 
-Start by scheduling the existing command with non-overlapping runs and per-domain
-budgets. Add durable crawl checkpoints, bounded retries/backoff and a way to
-resume failed URLs. The existing content hash could skip unchanged NLP work,
-while observation metadata still advances. Evidence would need versions or
-retraction status before presenting the graph as current: today, deleted claims
-remain historical edges. Track per-source failures and changes in extraction
-volume to detect broken selectors. SQLite WAL supports readers during ingestion,
-but writes should remain serialized until measured contention warrants another
-store. A queue or distributed workers would need a demonstrated workload first.
+The current graph has 535 weak co-mentions. Sentence boundaries, the 12-token
+proximity limit and distinct-URL counting reduce noise, and `include_weak=false`
+lets an analyst filter those edges out. Typed rules need review too: an early
+candidate treated a request to make Elon Musk CEO as an actual affiliation.
+The request and prediction guards in [relationships.py](app/relationships.py)
+now reject that claim.
 
-## Known limits
+My next step would be to sample the saved `edge_evidence` by extraction rule and
+source type, label the errors, and measure which rules need tightening. I would
+also group supporting pages by publisher and content hash to spot copied stories
+that inflate weights. Those are proposed improvements; the current counter still
+treats different URLs as different sources. Requiring several independent sources
+would reduce some false positives, but it would also hide useful single-source
+reports, so I would expose that as a filter rather than silently discard them.
 
-This is a bounded English-language take-home implementation. Websites can change,
-block automation or time out; selectors and source coverage need inspection.
-Sarcasm, pronouns, same-name entities, long clauses and aliases outside the
-configured vocabulary remain difficult. Discussion pages retain thread-level
-provenance rather than a comment/reply graph. Evidence is historical, centrality
-is sample-dependent, and large network/evidence responses have no pagination.
-The API is intended for local evaluation; it has no authentication or public
-hosting configuration. No extra infrastructure was added for this assignment.
+### D. What would change if I replaced SQLite with Neo4j?
+
+The current [queries.py](app/queries.py) needs shallow traversal and straightforward
+counts, which SQLite handles without another service. A graph database would make
+longer paths and questions such as “which people connect these two organisations?”
+easier to express as the analysis grows.
+
+The cost would be a database service to deploy, a driver, and changes to
+[storage.py](app/storage.py) and the query layer. I would lose the convenience of
+a single database file that a reviewer can inspect with SQL. Alias ambiguity,
+source evidence and observation-time counting would still need careful modelling.
+For this assignment's depth-1/2 queries, that extra setup is not justified.
+
+### E. What would continuous updates require?
+
+I would start by scheduling [scripts/run_pipeline.py](scripts/run_pipeline.py)
+with non-overlapping runs. The storage layer already avoids giving the same URL
+another vote, but continuous operation needs durable crawl checkpoints, bounded
+retries and a way to resume failures. Content hashes could skip NLP work for
+unchanged pages while their observation times advance.
+
+The bigger gap is how updates change meaning. Today, an edge survives even when
+its source removes the claim. Before calling this a current graph, I would add
+evidence versions or retraction status. I would also monitor per-source failures
+and extraction counts to catch broken selectors. SQLite WAL supports readers
+during ingestion; writes should stay serial until measured contention gives a
+reason to change that. A queue or distributed workers would be a later workload
+decision, not the first step.
+
+## Working project screenshots
+
+These are actual Swagger requests against the reviewed graph, captured on
+13 September 2026 in India (12 September UTC). Expand a section to see the
+relevant result, and click an image for its full resolution. Some long response
+boxes are scrolled to the fields being discussed.
+
+![Swagger overview showing the three analyst API endpoints](docs/screenshots/01-api-overview.png)
+
+<details>
+<summary>Run a network query and follow its evidence</summary>
+
+The controls request Mira Murati's direct connections with weak edges excluded.
+The HTTP 200 response shows the typed affiliation, weight 2 and original source
+text discussed in reflection A.
+
+![Network controls for Mira Murati with depth 1 and weak edges excluded](docs/screenshots/02-network-controls.png)
+
+![Typed relationship with the supporting Guardian sentence, URL and dates](docs/screenshots/03-relationship-evidence.png)
+
+</details>
+
+<details>
+<summary>Find central entities</summary>
+
+With `limit=3` and `include_weak=false`, OpenAI has 14 neighbours and Microsoft
+has 3. Sam Altman is the third result, below the visible excerpt. The response
+shows the formula and the total of 716 stored entities.
+
+![Centrality response with the metric, graph size and ranked entities](docs/screenshots/04-central-entities.png)
+
+</details>
+
+<details>
+<summary>Inspect newly observed connections</summary>
+
+The first image shows the timestamp boundary and growth thresholds. The second
+scrolls to a discussion-sourced edge with `reason=new`, `weight_before=0` and
+`increase=1`. The complete response has 22 typed edges. “New” refers to observation
+time; the underlying discussion describes historical events.
+
+![New-connections query showing its timestamp and growth thresholds](docs/screenshots/05a-new-connections-thresholds.png)
+
+![An edge's evidence and new-connection classification](docs/screenshots/05b-new-connections-result.png)
+
+</details>
+
+<details>
+<summary>Compare Elon Musk with @elonmusk</summary>
+
+Both lookups return node `4722d966e1a7f0e0af87fc39`; the full responses were
+checked for equality. `%40` in the handle's request URL encodes `@`. The empty
+`edges` list is expected here: `include_weak=false` hides this person's weak
+connections, and this sample has no retained typed affiliation for him.
+
+![Elon Musk lookup returning the canonical person node](docs/screenshots/06-elon-musk.png)
+
+![Handle lookup returning the same Elon Musk node](docs/screenshots/07-elonmusk-handle.png)
+
+</details>
+
+<details>
+<summary>See what happens when a surname is ambiguous</summary>
+
+The bare surname `Musk` returns the intended HTTP 409 response with two candidate
+IDs. Use a canonical name or ID to choose one. Swagger's “Undocumented” label
+means the 409 response schema is not declared in the OpenAPI documentation.
+
+![Ambiguous Musk lookup showing the two candidate person nodes](docs/screenshots/08-ambiguous-surname.png)
+
+</details>
+
+<details>
+<summary>Review source coverage and test output</summary>
+
+This is a generated verification report from the SQLite database and actual
+saved test output. It lists the six source URLs, graph counts and 125 passing
+tests with one warning. It is labeled as a report, separate from the Swagger UI.
+
+![Verification report with real source URLs, graph counts and test results](docs/screenshots/09-data-and-tests.png)
+
+</details>
+
+## Checks and useful commands
+
+Run the deterministic tests with:
+
+```shell
+python -m pytest -q --basetemp=tmp/tests
+```
+
+The recorded run passed 125 tests with one dependency deprecation warning. Tests
+cover source normalisation, alias ambiguity, relationship rules, repeat ingestion,
+provenance, traversal and temporal/centrality boundaries. Live crawling was
+checked separately. The changed-seed check replaced three URLs on the supported
+sites; it does not establish that every unfamiliar site will parse correctly.
+
+To collect pages without building the graph, or reprocess a saved crawl:
+
+```shell
+python scripts/crawl_sources.py --config config/sources.yaml --output data/crawl.json
+python scripts/run_pipeline.py --from-crawl data/crawl.json --strict
+```
+
+Replay keeps the original observation times and is labeled `replay` in the
+report. An exact replay of the reviewed input added no evidence and left all six
+database tables unchanged.
+
+Use a fresh database when comparing extraction rules, since existing databases
+keep historical evidence. `--db PATH` sets the pipeline database; `MEDIA_DB_PATH`
+sets the API database and is also the pipeline default when `--db` is omitted.
+For example, in PowerShell:
+
+```powershell
+$env:MEDIA_DB_PATH = 'data/experiment.db'
+python scripts/run_pipeline.py --strict
+python -m uvicorn app.api:app --host 127.0.0.1 --port 8000
+```
+
+Both commands must point to the same database. If the API returns an unknown
+entity after a crawl, check that path and `data/run-summary.json` first.
+
+The pipeline exits with `0` when every configured source type contributes usable
+content. It returns `1` for no usable content, a missing type, or any page failure
+under `--strict`; setup, configuration or database failures return `2`. Without
+strict mode, a partial run can succeed while still listing failed pages. A failed
+live page may need another attempt or a selector update; inspect the report before
+treating the run as complete.
+
+## Known limits and next steps
+
+This is a bounded English-language backend assessment. Short names, sarcasm,
+pronouns, long clauses and topics outside the configured vocabulary still cause
+misses or mistakes. Discussion metadata is at thread level, historical evidence
+is not retracted, and large API responses have no pagination. The API is intended
+for local evaluation and has no authentication or public hosting setup.
+
+The next useful improvements are an annotated sample to measure extraction
+quality, better handling of copied evidence and retractions, and crawl recovery
+for repeated runs. The reflections above explain where each would fit in the
+current code. The existing setup stays small enough to run, inspect and explain.
